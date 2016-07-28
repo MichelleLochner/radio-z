@@ -37,9 +37,9 @@ class SaxCatalogue:
             A catalogue of SAX objects as a dataframe
         """
         df['v0'] = - 3e5*df['zapparent']/(1 + df['zapparent'])
-        df['w_obs_20'] = df['hiwidth20']*1e3
-        df['w_obs_50'] = df['hiwidth50']*1e3
-        df['w_obs_peak'] = df['hiwidthpeak']*1e3
+        df['w_obs_20'] = df['hiwidth20']
+        df['w_obs_50'] = df['hiwidth50']
+        df['w_obs_peak'] = df['hiwidthpeak']
         df['psi_obs_max'] = df['hiintflux']*df['hilumpeak']
         df['psi_obs_0'] = df['hiintflux']*df['hilumcenter']
 
@@ -469,7 +469,7 @@ class DataFromCatalogue:
             plt.plot(v, psi_fit, color=fit_colour, lw=1.5)
 
         if zoom and len(model_params) != 0:  # We need to know where the true line is if we want to zoom in
-            delta = 3*model_params[1]
+            delta = 5*model_params[1]
             if not model_params[0]-delta<v.min():
                 plt.xlim([model_params[0]-delta,model_params[0]+delta])
 
