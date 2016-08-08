@@ -116,7 +116,7 @@ class LineProfile:
         Produces a parameterised HI spectral line profile as specified in
         Obreschkow et al (2009) arXiv:0908.0983 Eq A1 plotted over a velocity
         interval v.
-    
+
         Parameters
         ----------
         v : '~np.ndarray'
@@ -124,7 +124,7 @@ class LineProfile:
         noise : float or array, optional
             If not zero, generates noise from a normal distribution defined by either a float (sigma) or an array
             (same size as v).
-    
+
         Returns
         -------
         psi : '~np.ndarray'
@@ -133,19 +133,22 @@ class LineProfile:
         v = v.copy()
         v -= self.v0
         psi = np.zeros_like(v)
-        v1 = abs(v) >= self.w_obs_peak/2.
-        v2 = (abs(v) < self.w_obs_peak/2.)*(self.psi_obs_max > self.psi_obs_0)
-        v3 = (abs(v) < self.w_obs_peak/2.)*(self.psi_obs_max == self.psi_obs_0)
 
-        psi[v1] = self.psi_obs_max*np.exp(self._k1()*pow(abs(v[v1]) - self._k3(), self._k2()))
-        psi[v2] = self._k5()*pow(self._k4() - v[v2]**2., -0.5)
-        psi[v3] = self.psi_obs_0
+        fact = 20
+        v0 = abs(v) < fact*self.w_obs_20
+        v1 = abs(v) >= self.w_obs_peak / 2.
+        v2 = (abs(v) < self.w_obs_peak / 2.) * (self.psi_obs_max > self.psi_obs_0)
+        v3 = (abs(v) < self.w_obs_peak / 2.) * (self.psi_obs_max == self.psi_obs_0)
 
-        norm = psi.max()/self.psi_obs_max
-        psi = psi*norm
+        psi[v1*v0] = self.psi_obs_max * np.exp(self._k1() * pow(abs(v[v0*v1]) - self._k3(), self._k2()))
+        psi[v2*v0] = self._k5() * pow(self._k4() - v[v0*v2] ** 2., -0.5)
+        psi[v3*v0] = self.psi_obs_0
+
+        norm = psi.max() / self.psi_obs_max
+        psi = psi * norm
 
         if hasattr(noise, "__len__") or noise != 0:
-            noise = np.random.randn(len(psi))*noise
+            noise = np.random.randn(len(psi)) * noise
             psi = psi + noise
 
         return psi
