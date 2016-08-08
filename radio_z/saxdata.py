@@ -5,6 +5,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 from radio_z import hiprofile
+import os
 
 
 class SaxCatalogue:
@@ -36,6 +37,7 @@ class SaxCatalogue:
         df : pandas.Dataframe
             A catalogue of SAX objects as a dataframe
         """
+        df['id'] = 'ID' + df['id'].astype(int).astype(str) # For HDF5 naming conventions
         df['v0'] = - 3e5*df['zapparent']/(1 + df['zapparent'])
         df['w_obs_20'] = df['hiwidth20']
         df['w_obs_50'] = df['hiwidth50']
@@ -75,6 +77,24 @@ class SaxCatalogue:
 
         return df
 
+    def get_params(self, df, ind):
+        """
+        Gets the true parameters for a dataframe as an array (useful for plotting etc.)
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Catalogue dataframe
+        ind :   str
+            ID of object to return
+
+        Returns
+        -------
+        array
+            Returns just the true parameters
+        """
+        cols=['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']
+        return df[df['id']==ind][cols].as_matrix()[0]
+
 
 class Survey:
     """
@@ -109,6 +129,9 @@ class Survey:
             self.z_min = 0
             self.z_max = 0.5
             self.band = 2
+
+        else:
+            print('Survey name not recognised')
 
         self.kb = 1.38e-16/1.e4/1.e-23  # Boltzmann constant
 
@@ -329,6 +352,7 @@ class Survey:
         aot = self.aeff_on_tsys(nu, normed_at_1ghz = True, band=self.band)
 
         return self.s_rms * aot
+        #return [self.s_rms]*len(v)
 
     def inband(self, df):
         """
@@ -403,6 +427,10 @@ class DataFromCatalogue:
         pandas.HDFstore
             Each object is stored in a different HDF5 dataset, stored in one big file
         """
+        # We delete any existing file to avoid issues with leaving files open etc.
+        if os.path.exists(output_hdf5_file):
+            os.system('rm -r ' + output_hdf5_file)
+
         hstore = pd.HDFStore(output_hdf5_file, 'a')
 
         ids = df.id
@@ -414,7 +442,7 @@ class DataFromCatalogue:
 
             data = self.create_data(params, survey, noise=True)
 
-            hstore['ID' + (str)((int)(i))] = data
+            hstore[i] = data
 
         return hstore
 
@@ -459,11 +487,13 @@ class DataFromCatalogue:
         plt.plot(v, psi, color=data_colour)
 
         if plot_model:
+            model_params = list(model_params)
             lp = hiprofile.LineProfile(*model_params)
             psi_model = lp.get_line_profile(v, noise=0)
             plt.plot(v, psi_model, color=model_colour, lw=1.5)
 
         if plot_fit:
+            fit_params = list(fit_params)
             lp = hiprofile.LineProfile(*fit_params)
             psi_fit = lp.get_line_profile(v, noise=0)
             plt.plot(v, psi_fit, color=fit_colour, lw=1.5)
@@ -476,6 +506,8 @@ class DataFromCatalogue:
         plt.xlabel('Velocity (km/s)',fontsize=fontsize)
         plt.ylabel('Normalised flux density (Jy s/km)',fontsize=fontsize)
         plt.xticks(rotation=rotation)
+
+        plt.tight_layout()
 
 
 
