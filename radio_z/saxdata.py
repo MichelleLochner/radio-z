@@ -47,7 +47,7 @@ class SaxCatalogue:
 
     def get_data(self, output_file = ''):
         """
-        Actually reads in the data
+        Actually reads in the S3 parameters
 
         Parameters
         ----------
@@ -92,8 +92,8 @@ class SaxCatalogue:
         array
             Returns just the true parameters
         """
-        cols=['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']
-        return df[df['id']==ind][cols].as_matrix()[0]
+        cols = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']
+        return df[df['id'] == ind][cols].as_matrix()[0]
 
 
 class Survey:

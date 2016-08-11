@@ -2,11 +2,14 @@ from __future__ import division, print_function
 import pymultinest
 import numpy as np
 import pandas as pd
-from radio_z import hiprofile
+from radio_z import hiprofile, contour_plot
 from collections import OrderedDict
 import os, time
 from multiprocessing import Pool
 from functools import partial
+from scipy.interpolate import interp1d
+import matplotlib.pyplot as plt
+
 
 def _fit_object(key, cat, output_dir='output', n_live_points=500, convert_to_binary=True):
     """
@@ -31,6 +34,7 @@ def _fit_object(key, cat, output_dir='output', n_live_points=500, convert_to_bin
     fd = FitData(dat['v'].as_matrix(), dat['psi'].as_matrix(), dat['psi_err'].as_matrix())
     fd.fit(n_live_points=n_live_points, chain_name=output_dir + '/' + key[1:] + '-',
            convert_to_binary=convert_to_binary)
+
 
 class FitData:
     """
@@ -63,23 +67,32 @@ class FitData:
             #         ('psi_obs_max', [-11, -4]),
             #         ('psi_obs_0', [-11, -4])
             #         ])
+            # self.bounds = OrderedDict([
+            #     ('v0', [v.min(), v.max()]),
+            #     ('w_obs_20', [0, 1500]),
+            #     ('w_obs_50', [0, 1500]),
+            #     ('w_obs_peak', [0, 1500]),
+            #     ('psi_obs_max', [0, 0.1]),
+            #     ('psi_obs_0', [0, 0.1])
+            # ])
             self.bounds = OrderedDict([
-                ('v0', [v.min(), v.max()]),
-                ('w_obs_20', [0, 1500]),
-                ('w_obs_50', [0, 1500]),
-                ('w_obs_peak', [0, 1500]),
-                ('psi_obs_max', [0, 0.1]),
-                ('psi_obs_0', [0, 0.1])
-            ])
+                    ('v0', [v.min(), v.max()]),
+                    ('w_obs_20', [0, 1500]),
+                    ('w_obs_50', [0, 1500]),
+                    ('w_obs_peak', [0, 1500]),
+                    ('psi_obs_max', [-11, -2]),
+                    ('psi_obs_0', [-11, -2])
+                ])
         else:
             self.bounds = bounds
         self.ndim = len(self.bounds)
+        self.likecalls = 0
 
     def apply_bounds(self, params):
         """
         Additional prior to ensure constraints are met in the sampling.
         """
-        return (params[1]>params[2]) and (params[2]>params[3]) and (params[4]>params[5])
+        return (params[1] > params[2]) and (params[2] > params[3]) and (params[4] > params[5])
 
     def loglike(self, cube, ndim, nparams):
         """
@@ -99,9 +112,9 @@ class FitData:
         float
             Log likelihood
         """
+        self.likecalls += 1
         params = []
-        #log_params = range(1,6)  # These parameters need to be exponentiated
-        log_params = []
+        log_params = [4, 5]
 
         # This is the only obvious way to convert a ctypes pointer to a numpy array
         for i in range(nparams):
@@ -116,7 +129,6 @@ class FitData:
 
         lp = hiprofile.LineProfile(*params)
         psi_fit = lp.get_line_profile(self.v, noise=0)
-
         # Multiply by dN/dz prior
         return -0.5*np.sum(((psi_fit-self.psi)/self.sigma)**2)
 
@@ -161,9 +173,9 @@ class FitData:
             If true, will convert the large chain files to numpy binary files
         """
         t1 = time.time()
-        pymultinest.run(self.loglike, self.prior, self.ndim, importance_nested_sampling = False, init_MPI = False,
-            resume = False, verbose = False, sampling_efficiency = 'parameter', n_live_points = n_live_points,
-            outputfiles_basename = chain_name, multimodal=False)
+        pymultinest.run(self.loglike, self.prior, self.ndim, importance_nested_sampling = True, init_MPI = False,
+                        resume = False, verbose = False, sampling_efficiency = 'parameter',
+                        n_live_points = n_live_points, outputfiles_basename = chain_name, multimodal=False)
 
         if convert_to_binary:
             # These are the files we can convert
@@ -176,7 +188,9 @@ class FitData:
                 np.save(outfile, x)
                 os.system('rm %s' % infile)
 
-        print('Time taken',(time.time()-t1)/60,'minutes')
+        print('Time taken', (time.time()-t1)/60, 'minutes')
+
+
 class FitCatalogue:
     """
     Fit an entire catalogue of data
@@ -191,8 +205,7 @@ class FitCatalogue:
         """
         self.cat = cat
 
-
-    def fit_all(self, nprocesses=1, output_dir='output', n_live_points=500, convert_to_binary=True):
+    def fit_all(self, nprocesses=1, output_dir='output', n_live_points=500, convert_to_binary=True, subset=[]):
         """
         Fits all the spectral lines in a catalogue.
 
@@ -206,28 +219,32 @@ class FitCatalogue:
             Number of live points for multinest
         convert_to_binary : bool, optional
             If true, converts the multinest output files to binary numpy files to save space.
+        subset : list, optional
+            Give a list of keys to run on a subset of the data
         """
 
-        if nprocesses>1:
+        if len(subset) == 0:
             ids = self.cat.keys()
+        else:
+            ids = subset
+
+        if nprocesses > 1:
             new_func = partial(_fit_object, cat=dict(self.cat), output_dir=output_dir, n_live_points=n_live_points,
                                convert_to_binary=convert_to_binary)
             p = Pool(nprocesses)
             p.map(new_func, ids)
 
         else:
-            ids = self.cat.keys()
-
             for i in ids[:1]:
                 _fit_object(i, self.cat, output_dir = output_dir, n_live_points = n_live_points,
-                convert_to_binary = convert_to_binary)
+                            convert_to_binary = convert_to_binary)
 
 
 class ChainAnalyser:
     """
     Class with convenience functions to analyse multinest output.
     """
-    def __init__(self, chain_name):
+    def __init__(self, chain_name, log_params=[4,5]):
         """
         Multinest chain analysis class.
 
@@ -236,14 +253,28 @@ class ChainAnalyser:
         chain_name : str
             The full root of all the chains (e.g. '/my/multinest/chain-') such that <chain_name>.stats and other
              output files exist
+        log_params : list, optional
+            Which parameters were varied in log space and so should be exponentiated
         """
         self.chain_name = chain_name
+        self.log_params = log_params
+
+        post = self.chain_name + 'post_equal_weights.dat'
+        if os.path.exists(post + '.npy'):
+            self.chain = np.load(post + '.npy')
+        else:
+            self.chain = np.loadtxt(post)
+
+        if len(self.log_params) > 0:
+            self.chain[:,self.log_params] = np.exp(self.chain[:,self.log_params])
+
+        self.param_names = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0', 'z']
 
     def convert_z(self, v):
         c = 3e5
         return -(v/(v+c))
 
-    def p_of_z(self, delta_z=0.1, v0_ind=0):
+    def p_of_z(self, delta_z=0, v0_ind=0):
         """
         Function to return the marginalised probability density function of redshift for a given object.
 
@@ -264,16 +295,12 @@ class ChainAnalyser:
         """
         c = 3e5 #Speed of light in km/s
 
-        post = self.chain_name+'post_equal_weights.dat'
-        if os.path.exists(post+'.npy'):
-            chain = np.load(post+'.npy')
+        z = self.convert_z(self.chain[:, v0_ind])
+
+        if delta_z == 0:
+            nbins = 25
         else:
-            chain = np.loadtxt(post)
-
-        z = self.convert_z(chain[:, v0_ind])
-
-        nbins = (int)((z.max() - z.min())/delta_z)
-
+            nbins = (int)((z.max() - z.min())/delta_z)
         pdf, bins = np.histogram(z, bins=nbins, density=True)
 
         # We want to return the mid points of the bins
@@ -281,33 +308,65 @@ class ChainAnalyser:
 
         return new_bins, pdf
 
-    def parameter_estimates(self):
+    def plot_p_of_z(self, delta_z=0, v0_ind=0, smooth=False):
+        """
+        Plots P(z)
+        Parameters
+        ----------
+        delta_z : float, optional
+            Approximate desired width of bin
+        v0_ind : int, optional
+            The column of the chain containing the v0 values
+        smooth : bool, optional
+            Whether or not to smooth the resulting curve
+        """
 
-        #log_params = range(1,6)
-        post = self.chain_name + 'post_equal_weights.dat'
-        if os.path.exists(post + '.npy'):
-            chain = np.load(post + '.npy')
+        bins, pdf = self.p_of_z(delta_z=delta_z, v0_ind=v0_ind)
+        if smooth:
+            f = interp1d(bins, pdf, kind='cubic')
+            newbins = np.linspace(bins.min(), bins.max(), 100)
+            newpdf = f(newbins)
+            plt.plot(newbins, newpdf, color='#0057f6', lw=1.5)
         else:
-            chain = np.loadtxt(post)
+            plt.plot(bins, pdf, color='k')
 
-        #chain[log_params] = np.exp(chain[log_params])
+        plt.xlabel('z')
+        plt.ylabel('P(z)')
+        plt.tight_layout()
 
-        param_names = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0', 'z']
+    def parameter_estimates(self, true_params=[]):
 
-        z = self.convert_z(chain[:,0])
-        logpost = chain[:,-1]
-        chain = np.column_stack((chain[:,:-1],z))
+        z = self.convert_z(self.chain[:, 0])
+        logpost = self.chain[:, -1]
+        chain = np.column_stack((self.chain[:, :-1], z))
 
-        parameters = pd.DataFrame(columns = ['Mean', 'Median', 'MAP', '16p', '84p'], index=param_names)
+        parameters = pd.DataFrame(columns = ['Mean', 'Median', 'MAP', '16p', '84p'], index=self.param_names)
 
         parameters['Mean'] = np.mean(chain, axis=0)
         parameters['Median'] = np.median(chain, axis=0)
-        parameters['MAP'] = chain[np.argmax(logpost),:]
+        parameters['MAP'] = chain[np.argmax(logpost), :]
         parameters['16p'] = np.percentile(chain, 16, axis=0)
         parameters['84p'] = np.percentile(chain, 84, axis=0)
 
+        if len(true_params) != 0:
+            true_z = self.convert_z(true_params[0])
+            true_params = np.append(true_params, true_z)
+            parameters['True'] = true_params
+
         return parameters
 
+    def triangle_plot(self, params=[], labels=[], true_vals=[], best_params=[], smooth=5e3, rot=0):
+        """
+            Plots the triangle plot for a sampled chain.
+            chain = Input chain
+            params = List of indices of parameters, otherwise every column of chain is used
+            labels = Labels for parameters
+            true_vales = If provided, plots the true values on the histograms and contours
+            best_params = List of lists for each parameter (mean, minus uncertainty, plus uncertainty) plotted on histograms
+            smooth = Smoothing scale for the contours. Contour will raise warning is this is too small. Set to 0 for no smoothing.
+        """
+        contour_plot.triangle_plot(self.chain.copy(), params=params, labels=labels, true_vals=true_vals,
+                                   best_params=best_params, smooth=smooth, rot=rot)
 
 
 
