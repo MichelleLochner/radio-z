@@ -130,7 +130,7 @@ class FitData:
         lp = hiprofile.LineProfile(*params)
         psi_fit = lp.get_line_profile(self.v, noise=0)
         # Multiply by dN/dz prior
-        return -0.5*np.sum(((psi_fit-self.psi)/self.sigma)**2)
+        return np.sum(np.log(1/(np.sqrt(2*np.pi*self.sigma**2))))-0.5*np.sum(((psi_fit-self.psi)/self.sigma)**2)
 
     def prior(self, cube, ndim, nparams):
         """
@@ -158,6 +158,8 @@ class FitData:
             cube[i] = cube[i]*(upper-lower)+lower
         return cube
 
+    # def loglike_flat(self, cube, ndim, nparams):
+
     def fit(self, n_live_points=500, chain_name='hi_run', convert_to_binary=False):
         """
         Actually run multinest to fit model to the data
@@ -175,7 +177,7 @@ class FitData:
         t1 = time.time()
         pymultinest.run(self.loglike, self.prior, self.ndim, importance_nested_sampling = True, init_MPI = False,
                         resume = False, verbose = False, sampling_efficiency = 'parameter',
-                        n_live_points = n_live_points, outputfiles_basename = chain_name, multimodal=False)
+                        n_live_points = n_live_points, outputfiles_basename = chain_name, multimodal=True)
 
         if convert_to_binary:
             # These are the files we can convert
