@@ -2,7 +2,7 @@ from __future__ import division, print_function
 import pymultinest
 import numpy as np
 import pandas as pd
-from radio_z import hiprofile, contour_plot
+from radio_z import hiprofile
 from collections import OrderedDict
 import os, time
 from multiprocessing import Pool

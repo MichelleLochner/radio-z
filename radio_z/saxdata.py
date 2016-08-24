@@ -427,6 +427,21 @@ class DataFromCatalogue:
         pandas.HDFstore
             Each object is stored in a different HDF5 dataset, stored in one big file
         """
+        
+        df['data'] = ''
+
+        ids = df.id
+
+        cols = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']  # The parameters we need
+        for i in ids:
+            params = df[df.id == i][cols]
+            params = params.as_matrix()[0].tolist()
+
+            data = self.create_data(params, survey, noise=True)
+
+            cat_df['data'][i] = data
+
+
         # We delete any existing file to avoid issues with leaving files open etc.
         if os.path.exists(output_hdf5_file):
             os.system('rm -r ' + output_hdf5_file)
