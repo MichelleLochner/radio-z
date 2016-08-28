@@ -35,6 +35,8 @@ def _fit_object(idx, cat, output_dir='output', n_live_points=500, convert_to_bin
     fd.idx, n_live_points=n_live_points, chain_name=output_dir + '/' + idx + '-',
            convert_to_binary=convert_to_binary)
     if store_in_hdf:
+        if 'results' not in cat.columns:
+            cat['results'] = ''
         cat['results'][idx] = fd.results_df
 
 
@@ -257,7 +259,7 @@ class ChainAnalyser:
     """
     Class with convenience functions to analyse multinest output.
     """
-    def __init__(self, chain_name, log_params=[4,5]):
+    def __init__(self, chain_name, idx, data_source, log_params=[4,5]):
         """
         Multinest chain analysis class.
 
@@ -266,17 +268,28 @@ class ChainAnalyser:
         chain_name : str
             The full root of all the chains (e.g. '/my/multinest/chain-') such that <chain_name>.stats and other
              output files exist
+        idx : int
+            The catalogue index of the chain to be analysed
+        data_source : str
+            The location of the stored data we want to analyse.
+            If 'binary' stored in a numpy binary .npy
+            If 'frame' stored in a pandas DataFrame
         log_params : list, optional
             Which parameters were varied in log space and so should be exponentiated
         """
         self.chain_name = chain_name
         self.log_params = log_params
-
-        post = self.chain_name + 'post_equal_weights.dat'
-        if os.path.exists(post + '.npy'):
-            self.chain = np.load(post + '.npy')
-        else:
-            self.chain = np.loadtxt(post)
+        if data_source=='binary':
+            post = self.chain_name + 'post_equal_weights.dat'
+            if os.path.exists(post + '.npy'):
+                self.chain = np.load(post + '.npy')
+            else:
+                self.chain = np.loadtxt(post)
+        elif data_source=='frame':
+            store = pd.HDFStore(chain_name)
+            cat = store['table']
+            chain_series = cat['results'][cat.index==idx]['post_equal_weights.dat']
+            self.chain = chain_series[idx].values
 
         if len(self.log_params) > 0:
             self.chain[:,self.log_params] = np.exp(self.chain[:,self.log_params])
