@@ -11,14 +11,14 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
 
-def _fit_object(key, cat, output_dir='output', n_live_points=500, convert_to_binary=True):
+def _fit_object(idx, cat, output_dir='output', n_live_points=500, convert_to_binary=False, store_in_hdf=True):
     """
-    Given a key, fits a single spectral line from a catalogue. External function to the FitCatalogue class to get
+    Given a idx, fits a single spectral line from a catalogue. External function to the FitCatalogue class to get
     around the pickling issues in the multiprocessing library.
 
     Parameters
     ----------
-    key : str
+    idx : int
         ID of object
     cat : pandas.DataFrame or dict
         Contains the catalogue of all the objects
@@ -29,11 +29,13 @@ def _fit_object(key, cat, output_dir='output', n_live_points=500, convert_to_bin
     convert_to_binary : bool, optional
         If true, converts the multinest output files to binary numpy files to save space.
     """
-    print('Fitting object', key[1:])
-    dat = cat[key]
+    print('Fitting object', idx)
+    dat = cat[cat.index==idx]
     fd = FitData(dat['v'].as_matrix(), dat['psi'].as_matrix(), dat['psi_err'].as_matrix())
-    fd.fit(n_live_points=n_live_points, chain_name=output_dir + '/' + key[1:] + '-',
+    fd.idx, n_live_points=n_live_points, chain_name=output_dir + '/' + idx + '-',
            convert_to_binary=convert_to_binary)
+    if store_in_hdf:
+        cat['results'][idx] = fd.results_df
 
 
 class FitData:
@@ -160,7 +162,7 @@ class FitData:
 
     # def loglike_flat(self, cube, ndim, nparams):
 
-    def fit(self, n_live_points=500, chain_name='hi_run', convert_to_binary=False):
+    def fit(self, idx, n_live_points=500, chain_name='hi_run', store_in_hdf=True, convert_to_binary=False):
         """
         Actually run multinest to fit model to the data
 
@@ -182,13 +184,22 @@ class FitData:
         if convert_to_binary:
             # These are the files we can convert
             ext = ['ev.dat', 'phys_live.points', 'live.points', '.txt', 'post_equal_weights.dat']
-
             for e in ext:
                 infile = os.path.join(chain_name+e)
                 outfile = infile+'.npy'
                 x = np.loadtxt(infile)
                 np.save(outfile, x)
                 os.system('rm %s' % infile)
+
+        if store_in_hdf:
+            # These are the files we can convert
+            ext = ['ev.dat', 'phys_live.points', 'live.points', '.txt', 'post_equal_weights.dat']
+            self.results_df = pd.DataFrame(index=idx)
+            for e in ext:
+                infile = os.path.join(chain_name+e)
+                x = np.loadtxt(infile)
+                self.results_df[e] = ''
+                self.results_df[e][idx] = x
 
         print('Time taken', (time.time()-t1)/60, 'minutes')
 
@@ -202,12 +213,12 @@ class FitCatalogue:
         Class to fit a catalogue of data, in parallel if requested
         Parameters
         ----------
-        cat : pandas.HDFStore
-            Catalogue of data in an HDF5 format where each object is a new table
+        cat : pandas.DataFrame
+            Catalogue of data in an HDF5 format where each object is a new row
         """
         self.cat = cat
 
-    def fit_all(self, nprocesses=1, output_dir='output', n_live_points=500, convert_to_binary=True, subset=[]):
+    def fit_all(self, nprocesses=1, output_dir='output', n_live_points=500, store_in_hdf=True, convert_to_binary=False, subset=[]):
         """
         Fits all the spectral lines in a catalogue.
 
@@ -226,20 +237,20 @@ class FitCatalogue:
         """
 
         if len(subset) == 0:
-            ids = self.cat.keys()
+            idx = self.cat.index
         else:
-            ids = subset
+            idx = subset
 
         if nprocesses > 1:
-            new_func = partial(_fit_object, cat=dict(self.cat), output_dir=output_dir, n_live_points=n_live_points,
-                               convert_to_binary=convert_to_binary)
+            new_func = partial(_fit_object, idx, cat=dict(self.cat), output_dir=output_dir, n_live_points=n_live_points,
+                               convert_to_binary=convert_to_binary, store_in_hdf=store_in_hdf)
             p = Pool(nprocesses)
-            p.map(new_func, ids)
+            p.map(new_func, idx)
 
         else:
-            for i in ids[:1]:
+            for i in idx:
                 _fit_object(i, self.cat, output_dir = output_dir, n_live_points = n_live_points,
-                            convert_to_binary = convert_to_binary)
+                            convert_to_binary = convert_to_binary, store_in_hdf=store_in_hdf)
 
 
 class ChainAnalyser:
