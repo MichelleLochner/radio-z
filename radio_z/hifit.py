@@ -164,7 +164,8 @@ class FitData:
             cube[i] = cube[i]*(upper-lower)+lower
         return cube
 
-    def fit(self, n_live_points=500, chain_name='hi_run', store_in_hdf=True, convert_to_binary=False):
+    def fit(self, n_live_points=500, chain_name='hi_run', store_in_hdf=True, convert_to_binary=False,
+            delete_files=False):
         """
         Actually run multinest to fit model to the data
 
@@ -196,14 +197,89 @@ class FitData:
                 os.system('rm %s' % infile)
 
         if store_in_hdf:
-            # These are the files we can convert
-            ext = ['ev.dat', 'phys_live.points', 'live.points', '.txt', 'post_equal_weights.dat']
-            self.results_df = pd.DataFrame(index=self.idx)
-            for e in ext:
-                infile = os.path.join(chain_name+e)
-                x = np.loadtxt(infile)
-                self.results_df[e] = ''
-                self.results_df[e][self.idx] = x
+            self.results_df = self.chains_to_df(chain_name)
+
+    def chains_to_df(self, chain_name):
+        """
+        Reads in numerical multinest output files and puts them in a pandas dataframe (for storing in hdf5 files)*[]:
+
+        Parameters
+        ----------
+        chain_name : str
+            Root for all the chains (including directory)
+
+        Returns
+        -------
+        pandas.DataFrame
+            The stored chains
+        """
+        ext = ['ev.dat', 'phys_live.points', 'live.points', '.txt', 'post_equal_weights.dat']
+        results_df = pd.DataFrame()
+        for e in ext:
+            infile = os.path.join(chain_name+e)
+            x = np.loadtxt(infile)
+            results_df[e] = ''
+            results_df[e][self.idx] = x
+
+        log_ev, log_ev_sig = self.get_evidence(chain_name)
+        results_df['evidence'] = [log_ev, log_ev_sig]
+
+        return results_df
+
+    def get_evidence(self, chain_name):
+        """
+        Retrieves the multinest computed evidence.
+
+        Parameters
+        ----------
+        chain_name : str
+            Root for all the chains (including directory)
+
+        Returns
+        -------
+        log_ev : float
+            ln(Bayesian evidence)
+        log_ev_sig : float
+            Uncertainty in ln(E)
+        """
+        lns = open(chain_name+'stats.dat').readlines()
+        line = lns[0].split(':')[1].split()
+        log_ev = float(line[0])
+        log_ev_sig = float(line[-1])
+
+        return log_ev, log_ev_sig
+
+    def compute_null_evidence(self):
+        """
+        Computes the Bayesian evidence for the "null hypothesis" (i.e. y=0)
+        Returns
+        -------
+        float
+            Bayesian evidence
+        """
+        # return np.sum(np.log(1/(np.sqrt(2*np.pi*self.sigma**2))))-0.5*np.sum((self.psi/self.sigma)**2)
+        return -0.5*np.sum((self.psi/self.sigma)**2)
+
+    def compute_evidence_ratio(self, chain_name):
+        """
+        Computes the Bayesian evidence ratio of the fitted model (M2) to the "null hypothesis" (M1)
+        Parameters
+        ----------
+        chain_name : str
+            The name of an already run chain where the evidence is stored
+        Returns
+        -------
+        float
+            ln(E2/E1)
+        float
+            Uncertainty in ln(E2/E1)
+        """
+
+        E2, E2_sig = self.get_evidence(chain_name)
+
+        E1 = self.compute_null_evidence()
+        return E2-E1, E2_sig
+
 
 
 class FitCatalogue:
