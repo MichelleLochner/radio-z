@@ -130,7 +130,8 @@ class FitData:
         lp = hiprofile.LineProfile(*params)
         psi_fit = lp.get_line_profile(self.v, noise=0)
         # Multiply by dN/dz prior
-        return np.sum(np.log(1/(np.sqrt(2*np.pi*self.sigma**2))))-0.5*np.sum(((psi_fit-self.psi)/self.sigma)**2)
+        #return np.sum(np.log(1/(np.sqrt(2*np.pi*self.sigma**2))))-0.5*np.sum(((psi_fit-self.psi)/self.sigma)**2)
+        return -0.5*np.sum(((psi_fit-self.psi)/self.sigma)**2)
 
     def prior(self, cube, ndim, nparams):
         """
@@ -176,7 +177,7 @@ class FitData:
         """
         t1 = time.time()
         pymultinest.run(self.loglike, self.prior, self.ndim, importance_nested_sampling = True, init_MPI = False,
-                        resume = False, verbose = False, sampling_efficiency = 'parameter',
+                        resume = False, verbose = False, sampling_efficiency = 'model',
                         n_live_points = n_live_points, outputfiles_basename = chain_name, multimodal=True)
 
         if convert_to_binary:
@@ -191,6 +192,43 @@ class FitData:
                 os.system('rm %s' % infile)
 
         print('Time taken', (time.time()-t1)/60, 'minutes')
+
+    def compute_null_evidence(self):
+        """
+        Computes the Bayesian evidence for the "null hypothesis" (i.e. y=0)
+
+        Returns
+        -------
+        float
+            Bayesian evidence
+        """
+        #return np.sum(np.log(1/(np.sqrt(2*np.pi*self.sigma**2))))-0.5*np.sum((self.psi/self.sigma)**2)
+        return -0.5*np.sum((self.psi/self.sigma)**2)
+
+    def compute_evidence_ratio(self, chain_name):
+        """
+        Computes the Bayesian evidence ratio of the fitted model (M2) to the "null hypothesis" (M1)
+
+        Parameters
+        ----------
+        chain_name : str
+            The name of an already run chain where the evidence is stored
+
+        Returns
+        -------
+        float
+            ln(E2/E1)
+        float
+            Uncertainty in ln(E2/E1)
+        """
+
+        lns = open(chain_name+'stats.dat').readlines()
+        line = lns[0].split(':')[1].split()
+        E2 = float(line[0])
+        E2_sig = float(line[-1])
+
+        E1 = self.compute_null_evidence()
+        return E2-E1, E2_sig
 
 
 class FitCatalogue:
@@ -369,6 +407,8 @@ class ChainAnalyser:
         """
         contour_plot.triangle_plot(self.chain.copy(), params=params, labels=labels, true_vals=true_vals,
                                    best_params=best_params, smooth=smooth, rot=rot)
+
+
 
 
 
