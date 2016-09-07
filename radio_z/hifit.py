@@ -2,7 +2,7 @@ from __future__ import division, print_function
 import pymultinest
 import numpy as np
 import pandas as pd
-from radio_z import hiprofile
+from radio_z import hiprofile, contour_plot
 from collections import OrderedDict
 import os, time
 from multiprocessing import Pool
@@ -30,9 +30,9 @@ def _fit_object(idx, cat, output_dir='output', n_live_points=500, convert_to_bin
         If true, converts the multinest output files to binary numpy files to save space.
     """
     print('Fitting object', idx)
-    dat = cat[cat.index==idx]
-    fd = FitData(dat['v'].as_matrix(), dat['psi'].as_matrix(), dat['psi_err'].as_matrix())
-    fd.idx, n_live_points=n_live_points, chain_name=output_dir + '/' + idx + '-',
+    dat = cat[cat.index == idx]
+    fd = FitData(idx, dat['v'].as_matrix(), dat['psi'].as_matrix(), dat['psi_err'].as_matrix())
+    fd.fit(n_live_points=n_live_points, chain_name=output_dir + '/' + (str)(idx) + '-',
            convert_to_binary=convert_to_binary)
     if store_in_hdf:
         if 'results' not in cat.columns:
@@ -44,7 +44,7 @@ class FitData:
     """
     Encapsulated class for fitting some HI profile data
     """
-    def __init__(self, v, psi, sigma, bounds=[]):
+    def __init__(self, idx, v, psi, sigma, bounds=[]):
         """
         Provide the data in the arguments
 
@@ -59,6 +59,7 @@ class FitData:
         bounds : OrderedDict, optional
             Uniform prior bounds on the parameters
         """
+        self.idx = idx
         self.v = v
         self.psi = psi
         self.sigma = sigma
@@ -134,7 +135,8 @@ class FitData:
         lp = hiprofile.LineProfile(*params)
         psi_fit = lp.get_line_profile(self.v, noise=0)
         # Multiply by dN/dz prior
-        return np.sum(np.log(1/(np.sqrt(2*np.pi*self.sigma**2))))-0.5*np.sum(((psi_fit-self.psi)/self.sigma)**2)
+        # return np.sum(np.log(1/(np.sqrt(2*np.pi*self.sigma**2))))-0.5*np.sum(((psi_fit-self.psi)/self.sigma)**2)
+        return -0.5*np.sum(((psi_fit-self.psi)/self.sigma)**2)
 
     def prior(self, cube, ndim, nparams):
         """
@@ -162,9 +164,7 @@ class FitData:
             cube[i] = cube[i]*(upper-lower)+lower
         return cube
 
-    # def loglike_flat(self, cube, ndim, nparams):
-
-    def fit(self, idx, n_live_points=500, chain_name='hi_run', store_in_hdf=True, convert_to_binary=False):
+    def fit(self, n_live_points=500, chain_name='hi_run', store_in_hdf=True, convert_to_binary=False):
         """
         Actually run multinest to fit model to the data
 
@@ -183,6 +183,8 @@ class FitData:
                         resume = False, verbose = False, sampling_efficiency = 'parameter',
                         n_live_points = n_live_points, outputfiles_basename = chain_name, multimodal=True)
 
+        print('Time taken', (time.time()-t1)/60, 'minutes')
+
         if convert_to_binary:
             # These are the files we can convert
             ext = ['ev.dat', 'phys_live.points', 'live.points', '.txt', 'post_equal_weights.dat']
@@ -196,14 +198,12 @@ class FitData:
         if store_in_hdf:
             # These are the files we can convert
             ext = ['ev.dat', 'phys_live.points', 'live.points', '.txt', 'post_equal_weights.dat']
-            self.results_df = pd.DataFrame(index=idx)
+            self.results_df = pd.DataFrame(index=self.idx)
             for e in ext:
                 infile = os.path.join(chain_name+e)
                 x = np.loadtxt(infile)
                 self.results_df[e] = ''
-                self.results_df[e][idx] = x
-
-        print('Time taken', (time.time()-t1)/60, 'minutes')
+                self.results_df[e][self.idx] = x
 
 
 class FitCatalogue:
@@ -220,7 +220,8 @@ class FitCatalogue:
         """
         self.cat = cat
 
-    def fit_all(self, nprocesses=1, output_dir='output', n_live_points=500, store_in_hdf=True, convert_to_binary=False, subset=[]):
+    def fit_all(self, nprocesses=1, output_dir='output', n_live_points=500, store_in_hdf=True,
+                convert_to_binary=False, subset=[]):
         """
         Fits all the spectral lines in a catalogue.
 
@@ -244,7 +245,7 @@ class FitCatalogue:
             idx = subset
 
         if nprocesses > 1:
-            new_func = partial(_fit_object, idx, cat=dict(self.cat), output_dir=output_dir, n_live_points=n_live_points,
+            new_func = partial(_fit_object, cat=dict(self.cat), output_dir=output_dir, n_live_points=n_live_points,
                                convert_to_binary=convert_to_binary, store_in_hdf=store_in_hdf)
             p = Pool(nprocesses)
             p.map(new_func, idx)
