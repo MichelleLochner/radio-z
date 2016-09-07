@@ -427,8 +427,11 @@ class DataFromCatalogue:
         pandas.HDFstore
             Each object is stored in a different HDF5 dataset, stored in one big file
         """
-        
-        df['data'] = ''
+        # We delete any existing file to avoid issues with leaving files open etc.
+        if os.path.exists(output_hdf5_file):
+            os.system('rm -r ' + output_hdf5_file)
+
+        hstore = pd.HDFStore(output_hdf5_file, 'a')
 
         ids = df.id
 
@@ -439,14 +442,7 @@ class DataFromCatalogue:
 
             data = self.create_data(params, survey, noise=True)
 
-            cat_df['data'][i] = data
-
-
-        # We delete any existing file to avoid issues with leaving files open etc.
-        if os.path.exists(output_hdf5_file):
-            os.system('rm -r ' + output_hdf5_file)
-
-        hstore = pd.HDFStore(output_hdf5_file, 'a')
+            hstore[i] = data
 
         return hstore
 
