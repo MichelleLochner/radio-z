@@ -4,14 +4,18 @@ import numpy as np
 import pandas as pd
 from radio_z import hiprofile, contour_plot
 from collections import OrderedDict
-import os, time
+import os
+import time
+import sys
+import glob
 from multiprocessing import Pool
 from functools import partial
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
+from tables.exceptions import HDF5ExtError  # Needed to catch errors when loading hdf5 files
 
 
-def _fit_object(key, cat, output_dir='output', n_live_points=500, convert_to_binary=True):
+def _fit_object(filename, output_dir='output', save_to_hdf=True, delete_files=False, n_live_points=500):
     """
     Given a key, fits a single spectral line from a catalogue. External function to the FitCatalogue class to get
     around the pickling issues in the multiprocessing library.
@@ -29,35 +33,64 @@ def _fit_object(key, cat, output_dir='output', n_live_points=500, convert_to_bin
     convert_to_binary : bool, optional
         If true, converts the multinest output files to binary numpy files to save space.
     """
-    print('Fitting object', key[1:])
-    dat = cat[key]
-    fd = FitData(dat['v'].as_matrix(), dat['psi'].as_matrix(), dat['psi_err'].as_matrix())
-    fd.fit(n_live_points=n_live_points, chain_name=output_dir + '/' + key[1:] + '-',
-           convert_to_binary=convert_to_binary)
+    id = filename.split(os.sep)[-1].split('.')[0]
+    print('Fitting object', id)
+    fd = FitData(filename=filename)
+    fd.fit(chain_name=output_dir + '/' + id + '-', save_to_hdf=save_to_hdf, delete_files=delete_files,
+           n_live_points=n_live_points)
 
 
 class FitData:
     """
     Encapsulated class for fitting some HI profile data
     """
-    def __init__(self, v, psi, sigma, bounds=[]):
+    def __init__(self, read_from_hdf=True, filename='chain.hdf5', v=[], psi=[], sigma=[], bounds=[]):
         """
-        Provide the data in the arguments
+        Class for using Multinest for inference on a single galaxy. Either read the data from an object HDF5 file (in
+        the 'data' table) or provide the data directly in the arguments. Can also save the output chain directly to
+        the same HDF5 file.
 
         Parameters
         ----------
-        v : array
-            Velocities
-        psi : array
-            Flux
-        sigma : array or float
-            Uncertainties in the flux
+        read_from_hdf : boolean, optional
+            If true, read the data directly from an individual object's HDF5 file
+        filename : str, optional
+            The HDF5 file to read the data from and/or write the output chain to
+        v : array, optional
+            Velocities (use if read_from_hdf = False)
+        psi : array, optional
+            Flux (use if read_from_hdf = False)
+        sigma : array or float, optional
+            Uncertainties in the flux (use if read_from_hdf = False)
         bounds : OrderedDict, optional
             Uniform prior bounds on the parameters
         """
-        self.v = v
-        self.psi = psi
-        self.sigma = sigma
+        self.filename = filename
+        self.complib = 'bzip2'  # What compression library should be used when storing hdf5 files
+
+        if read_from_hdf:
+            try:
+                hstore = pd.HDFStore(self.filename)
+                # We'll assume the data is stored in a child table in the hdf5 file
+                data = hstore['data']
+                self.v, self.psi, self.sigma = data.as_matrix().T
+
+            except HDF5ExtError:
+                if len(v) == 0:
+                    print('Error: File provided is not an HDF5 file or is corrupt. Please provide v, psi and sigma '
+                          'instead.')
+                    sys.exit(0)
+                else:
+                    print('Warning: File provided is not an HDF5 file or is corrupt')
+
+                self.v = v
+                self.psi = psi
+                self.sigma = sigma
+        else:
+            self.v = v
+            self.psi = psi
+            self.sigma = sigma
+
         if len(bounds) == 0:
             # self.bounds = OrderedDict([
             #         ('v0', [v.min(),v.max()]),
@@ -76,7 +109,7 @@ class FitData:
             #     ('psi_obs_0', [0, 0.1])
             # ])
             self.bounds = OrderedDict([
-                    ('v0', [v.min(), v.max()]),
+                    ('v0', [self.v.min(), self.v.max()]),
                     ('w_obs_20', [0, 1500]),
                     ('w_obs_50', [0, 1500]),
                     ('w_obs_peak', [0, 1500]),
@@ -161,7 +194,7 @@ class FitData:
 
     # def loglike_flat(self, cube, ndim, nparams):
 
-    def fit(self, n_live_points=500, chain_name='hi_run', convert_to_binary=False):
+    def fit(self, chain_name='hi_run', save_to_hdf=True, delete_files=False, n_live_points=500):
         """
         Actually run multinest to fit model to the data
 
@@ -172,24 +205,34 @@ class FitData:
         chain_name : str, optional
             Root for all the chains (including directory)
             Note: This path can't be too long because multinest has a hardcoded character limit (100 characters)
-        convert_to_binary : bool, optional
-            If true, will convert the large chain files to numpy binary files
+        save_to_hdf : boolean, optional
+            Whether or not to store the chain (only the equal weighted posterior) and the evidence in the object hdf5
+            file (provided at initialisation)
+        delete_files : boolean, optional
+            Whether or not to delete the base chain files (will not exectue if not saved to hdf5 first)
         """
         t1 = time.time()
         pymultinest.run(self.loglike, self.prior, self.ndim, importance_nested_sampling = True, init_MPI = False,
-                        resume = False, verbose = False, sampling_efficiency = 'model',
-                        n_live_points = n_live_points, outputfiles_basename = chain_name, multimodal=True)
+                        resume = False, verbose = False, sampling_efficiency = 'model', evidence_tolerance = 0.5,
+                        n_live_points = n_live_points, outputfiles_basename = chain_name, multimodal = True)
 
-        if convert_to_binary:
+        if save_to_hdf:
             # These are the files we can convert
-            ext = ['ev.dat', 'phys_live.points', 'live.points', '.txt', 'post_equal_weights.dat']
+            x = np.loadtxt(chain_name+'post_equal_weights.dat')
+            df = pd.DataFrame(data=x, columns=list(self.bounds.keys())+['loglike'])
+            df.to_hdf(self.filename, 'chain', complib=self.complib)
 
-            for e in ext:
-                infile = os.path.join(chain_name+e)
-                outfile = infile+'.npy'
-                x = np.loadtxt(infile)
-                np.save(outfile, x)
-                os.system('rm %s' % infile)
+            ev, ev_sig = self.read_evidence(chain_name)
+            bayes_fact, bayes_sig = self.compute_evidence_ratio(chain_name)
+            df_ev = pd.DataFrame(data=np.array([[ev, ev_sig, bayes_fact]]), columns=['ln(evidence)', 'uncertainty',
+                                                                                     'Bayes factor'])
+            df_ev.to_hdf(self.filename, 'evidence', complib=self.complib)
+
+            if delete_files:
+                fls = glob.glob(chain_name+'*')
+                print('Deleting files')
+                for f in fls:
+                    os.system('rm '+f)
 
         print('Time taken', (time.time()-t1)/60, 'minutes')
 
@@ -204,6 +247,28 @@ class FitData:
         """
         #return np.sum(np.log(1/(np.sqrt(2*np.pi*self.sigma**2))))-0.5*np.sum((self.psi/self.sigma)**2)
         return -0.5*np.sum((self.psi/self.sigma)**2)
+
+    def read_evidence(self, chain_name):
+        """
+        Reads in the ln(evidence) and uncertainty for a run multinest chain.
+
+        Parameters
+        ----------
+        chain_name : str
+            The name of an already run chain where the evidence is stored
+
+        Returns
+        -------
+        float
+            ln(evidence)
+        float
+            Uncertainty in ln(evidence)
+        """
+        lns = open(chain_name+'stats.dat').readlines()
+        line = lns[0].split(':')[1].split()
+        ev = float(line[0])
+        ev_sig = float(line[-1])
+        return ev, ev_sig
 
     def compute_evidence_ratio(self, chain_name):
         """
@@ -222,10 +287,7 @@ class FitData:
             Uncertainty in ln(E2/E1)
         """
 
-        lns = open(chain_name+'stats.dat').readlines()
-        line = lns[0].split(':')[1].split()
-        E2 = float(line[0])
-        E2_sig = float(line[-1])
+        E2, E2_sig = self.read_evidence(chain_name)
 
         E1 = self.compute_null_evidence()
         return E2-E1, E2_sig
@@ -235,17 +297,19 @@ class FitCatalogue:
     """
     Fit an entire catalogue of data
     """
-    def __init__(self, cat):
+    def __init__(self, filepath='./', subset=[]):
         """
-        Class to fit a catalogue of data, in parallel if requested
+        Class to fit a catalogue of data, in parallel if requested. Assumes data are stored as individual HDF5 files
+        in a single directory.
         Parameters
         ----------
-        cat : pandas.HDFStore
-            Catalogue of data in an HDF5 format where each object is a new table
+        filepath : str, optional
+            Catalogue of data where each object is a different HDF5 file
         """
-        self.cat = cat
+        self.filepath = filepath
+        self.subset = subset
 
-    def fit_all(self, nprocesses=1, output_dir='output', n_live_points=500, convert_to_binary=True, subset=[]):
+    def fit_all(self, nprocesses=1, output_dir='output', save_to_hdf=True, delete_files=False, n_live_points=500):
         """
         Fits all the spectral lines in a catalogue.
 
@@ -263,50 +327,46 @@ class FitCatalogue:
             Give a list of keys to run on a subset of the data
         """
 
-        if len(subset) == 0:
-            ids = self.cat.keys()
+        if len(self.subset) == 0:
+            files = glob.glob(os.path.join(self.filepath, 'ID*hdf5'))
         else:
-            ids = subset
+            files = self.subset
 
         if nprocesses > 1:
-            new_func = partial(_fit_object, cat=dict(self.cat), output_dir=output_dir, n_live_points=n_live_points,
-                               convert_to_binary=convert_to_binary)
+            new_func = partial(_fit_object, output_dir=output_dir, save_to_hdf=save_to_hdf, delete_files=delete_files,
+                               n_live_points=n_live_points)
             p = Pool(nprocesses)
-            p.map(new_func, ids)
+            p.map(new_func, files)
 
         else:
-            for i in ids[:1]:
-                _fit_object(i, self.cat, output_dir = output_dir, n_live_points = n_live_points,
-                            convert_to_binary = convert_to_binary)
+            for f in files[:1]:
+                _fit_object(f, output_dir=output_dir, save_to_hdf=save_to_hdf, delete_files=delete_files,
+                            n_live_points=n_live_points)
 
 
 class ChainAnalyser:
     """
     Class with convenience functions to analyse multinest output.
     """
-    def __init__(self, chain_name, log_params=[4,5]):
+    def __init__(self, filename, log_params=[4,5]):
         """
         Multinest chain analysis class.
 
         Parameters
         ----------
-        chain_name : str
-            The full root of all the chains (e.g. '/my/multinest/chain-') such that <chain_name>.stats and other
-             output files exist
+        filename : str, optional
+            The HDF5 file to read the chain and evidence from
         log_params : list, optional
             Which parameters were varied in log space and so should be exponentiated
         """
-        self.chain_name = chain_name
+        self.filename = filename
         self.log_params = log_params
 
-        post = self.chain_name + 'post_equal_weights.dat'
-        if os.path.exists(post + '.npy'):
-            self.chain = np.load(post + '.npy')
-        else:
-            self.chain = np.loadtxt(post)
+        self.chain = pd.read_hdf(filename, 'chain').as_matrix()
+        self.evidence = pd.read_hdf(filename, 'evidence')
 
         if len(self.log_params) > 0:
-            self.chain[:,self.log_params] = np.exp(self.chain[:,self.log_params])
+            self.chain[:, self.log_params] = np.exp(self.chain[:, self.log_params])
 
         self.param_names = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0', 'z']
 
@@ -314,7 +374,7 @@ class ChainAnalyser:
         c = 3e5
         return -(v/(v+c))
 
-    def p_of_z(self, delta_z=0, v0_ind=0):
+    def p_of_z(self, delta_z=0, v0_ind=0, save_to_file=True):
         """
         Function to return the marginalised probability density function of redshift for a given object.
 
@@ -324,6 +384,8 @@ class ChainAnalyser:
             Approximate desired width of bin
         v0_ind : int, optional
             The column of the chain containing the v0 values
+        save_to_file : bool, optional
+            Whether or not to store the output back in the original hdf5 file
 
         Returns
         -------
@@ -333,7 +395,7 @@ class ChainAnalyser:
             The values of the pdf at the corresponding z value
 
         """
-        c = 3e5 #Speed of light in km/s
+        c = 3e5 # Speed of light in km/s
 
         z = self.convert_z(self.chain[:, v0_ind])
 
@@ -345,6 +407,10 @@ class ChainAnalyser:
 
         # We want to return the mid points of the bins
         new_bins = (bins[1:] + bins[:-1])/2
+
+        if save_to_file:
+            df = pd.DataFrame(data=np.column_stack(new_bins, pdf), columns=['z', 'p(z)'])
+            df.to_hdf(self.filename, 'p(z)')
 
         return new_bins, pdf
 
@@ -374,7 +440,24 @@ class ChainAnalyser:
         plt.ylabel('P(z)')
         plt.tight_layout()
 
-    def parameter_estimates(self, true_params=[]):
+    def parameter_estimates(self, true_params=[], save_to_file=True):
+        """
+        Returns the best fit estimate of the parameters and their uncertainties.
+
+        Parameters
+        ----------
+        true_params : list-like, optional
+            If the true parameters are supplied, add them to the output dataframe for ease of comparison
+        save_to_file : bool, optional
+            Whether or not to store the output back in the original hdf5 file
+
+        Returns
+        -------
+        pd.DataFrame
+            The parameter estimates (mean, median and maximum posterior) as well as the 16th and 84th percentiles
+            (corresponding to upper and lower 1 sigma estimates for a Gaussian)
+
+        """
 
         z = self.convert_z(self.chain[:, 0])
         logpost = self.chain[:, -1]
@@ -393,17 +476,33 @@ class ChainAnalyser:
             true_params = np.append(true_params, true_z)
             parameters['True'] = true_params
 
+        if save_to_file:
+            parameters.to_hdf(self.filename, 'summary')
+
         return parameters
 
     def triangle_plot(self, params=[], labels=[], true_vals=[], best_params=[], smooth=5e3, rot=0):
         """
-            Plots the triangle plot for a sampled chain.
-            chain = Input chain
-            params = List of indices of parameters, otherwise every column of chain is used
-            labels = Labels for parameters
-            true_vales = If provided, plots the true values on the histograms and contours
-            best_params = List of lists for each parameter (mean, minus uncertainty, plus uncertainty) plotted on histograms
-            smooth = Smoothing scale for the contours. Contour will raise warning is this is too small. Set to 0 for no smoothing.
+        Plots the triangle plot for a sampled chain.
+
+        Parameters
+        ----------
+        params : list-like, optional
+            List of indices of parameters, otherwise every column of chain is used
+        labels : list-like, optional
+            Labels for parameters
+        true_vals : list-like, optional
+            If provided, plots the true values on the histograms and contours
+        best_params : list-like, optional
+            List of lists for each parameter (mean, minus uncertainty, plus uncertainty) plotted on histograms
+        smooth : float, optional
+            Smoothing scale for the contours. Contour will raise warning is this is too small. Set to 0 for no smoothing.
+        rot : float, optional
+            Rotation angle for the x axis tick labels (they often clash and need to be rotated)
+
+        Returns
+        -------
+
         """
         contour_plot.triangle_plot(self.chain.copy(), params=params, labels=labels, true_vals=true_vals,
                                    best_params=best_params, smooth=smooth, rot=rot)

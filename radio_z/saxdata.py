@@ -5,7 +5,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 from radio_z import hiprofile
-import os
+import os, glob
 
 
 class SaxCatalogue:
@@ -26,6 +26,9 @@ class SaxCatalogue:
         """
         self.filename = filename
         self.nu_rest = nu_rest
+        self.important_parameters = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']
+        self.ids = [] # This can only be set by reading in the original catalogue file
+        self.complib = 'bzip2'  # What compression library should be used when storing hdf5 files
 
     def convert_parameters(self, df):
         """
@@ -45,14 +48,9 @@ class SaxCatalogue:
         df['psi_obs_max'] = df['hiintflux']*df['hilumpeak']
         df['psi_obs_0'] = df['hiintflux']*df['hilumcenter']
 
-    def get_data(self, output_file = ''):
+    def get_data(self):
         """
         Actually reads in the S3 parameters
-
-        Parameters
-        ----------
-        output_file : str, optional
-            Saves to another file
 
         Returns
         -------
@@ -65,19 +63,19 @@ class SaxCatalogue:
             # We'll assume the data is stored in a child table in the hdf5 file
             key = hstore.keys()[-1]
             df = hstore[key]
+            hstore.close()
 
         except HDF5ExtError:
             # In which case this is a sql.result ascii file
             df = pd.read_csv(self.filename)
 
-        if len(output_file) != 0:
-            df.to_hdf(output_file, key='table')
-
         self.convert_parameters(df)
+
+        self.ids = (list)(df['id'])
 
         return df
 
-    def get_params(self, df, ind):
+    def get_params(self, df, ind=''):
         """
         Gets the true parameters for a dataframe as an array (useful for plotting etc.)
         Parameters
@@ -92,8 +90,62 @@ class SaxCatalogue:
         array
             Returns just the true parameters
         """
-        cols = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']
-        return df[df['id'] == ind][cols].as_matrix()[0]
+        if 'id' in df.columns:
+            return df[df['id'] == ind][self.important_parameters].as_matrix()[0]
+        else:
+            return df[self.important_parameters].as_matrix()[0]
+
+    def get_ids(self):
+        """
+        Returns a list of object identifiers in this catalogue.
+
+        Returns
+        -------
+        IDs : list
+            List of IDs (as strings)
+        """
+        if len(self.ids) != 0:
+            return self.ids
+
+        else:
+            try:
+                hstore = pd.HDFStore(self.filename)
+                # We'll assume the data is stored in a child table in the hdf5 file
+                key = hstore.keys()[-1]
+                df = hstore[key]
+                hstore.close()
+
+            except HDF5ExtError:
+                # In which case this is a sql.result ascii file
+                df = pd.read_csv(self.filename)
+
+            ids = df['id']
+
+            if len(ids) == 0:
+                print('Warning: no ID found.')
+            else:
+                ids = 'ID' + ids.astype(int).astype(str)
+            ids = (list)(ids)
+
+            self.ids = ids
+            return ids
+
+    def write_to_disk(self, filepath='./'):
+        """
+        Reads the catalogue file, extracts the 6 parameters we care about and then stores them as individual hdf5 files
+        for each object.
+
+        Parameters
+        ----------
+        filepath : str
+            The file path where to store all the files. The files will be saved as <object id>.hdf5
+        """
+        df = self.get_data()
+
+        for i in df['id']:
+            outfile = os.path.join(filepath, (str)(i)+'.hdf5')
+            params = df[df['id'] == i][self.important_parameters]
+            params.to_hdf(outfile, 'parameters', complib=self.complib)
 
 
 class Survey:
@@ -409,42 +461,46 @@ class DataFromCatalogue:
 
         return pd.DataFrame(data=np.column_stack([v_range, psi, sigma]), columns=['v', 'psi', 'psi_err'])
 
-    def create_from_cat(self, df, survey, output_hdf5_file='catalogue_data.hdf5'):
+    def create_from_cat(self, survey, df=[], filepath='./'):
         """
-        Generates all data from a set of objects in a catalogue.
+        Generates all data from a set of objects in a catalogue (supplied either as a dataframe or as existing hdf5
+        files) and stores the data in either existing or new hdf5 files (one per object).
 
         Parameters
         ----------
-        df : pandas.DataFrame
-            The catalogue with parameters for each object
         survey : saxdata.Survey
             Which survey to make this for
-        output_hdf5_file : str, optional
-            We have to store the output inside an HDF5 file
-
-        Returns
-        -------
-        pandas.HDFstore
-            Each object is stored in a different HDF5 dataset, stored in one big file
+        df : pandas.DataFrame, optional
+            The catalogue with parameters for each object
+        filepath : str, optional
+            Where to put the output hdf5 files
         """
-        # We delete any existing file to avoid issues with leaving files open etc.
-        if os.path.exists(output_hdf5_file):
-            os.system('rm -r ' + output_hdf5_file)
-
-        hstore = pd.HDFStore(output_hdf5_file, 'a')
-
-        ids = df.id
-
         cols = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']  # The parameters we need
-        for i in ids:
-            params = df[df.id == i][cols]
-            params = params.as_matrix()[0].tolist()
 
-            data = self.create_data(params, survey, noise=True)
+        if len(df) != 0:
+            ids = df.id
+            for i in ids:
+                params = df[df.id == i][cols]
+                params = params.as_matrix()[0].tolist()
 
-            hstore[i] = data
+                data = self.create_data(params, survey, noise=True)
 
-        return hstore
+                outfile = os.path.join(filepath, (str)(i)+'.hdf5')
+                data.to_hdf(outfile, 'data')
+        else:
+            files = glob.glob(filepath+'ID*.hdf5')
+
+            if len(files) == 0:
+                print('Cannot find object files matching pattern <ID*.hdf5>. Please supply DataFrame or correct path.')
+
+            else:
+                for f in files:
+                    hstore = pd.HDFStore(f)
+                    params = hstore['parameters'][cols]
+                    hstore.close()
+                    params = params.as_matrix()[0].tolist()
+                    data = self.create_data(params, survey, noise=True)
+                    data.to_hdf(f, 'data')
 
     def plot_profile(self, df, plot_model=False, model_params=[], plot_fit=False, fit_params=[], zoom=True,
                      fontsize=14, data_colour='#c2c2d6', model_colour='k', fit_colour='r', rotation=0):
@@ -481,8 +537,8 @@ class DataFromCatalogue:
             v = df['v'].as_matrix()
             psi = df['psi'].as_matrix()
         else:
-            v = df[:,0]
-            psi = df[:,1]
+            v = df[:, 0]
+            psi = df[:, 1]
 
         plt.plot(v, psi, color=data_colour)
 
@@ -500,8 +556,8 @@ class DataFromCatalogue:
 
         if zoom and len(model_params) != 0:  # We need to know where the true line is if we want to zoom in
             delta = 5*model_params[1]
-            if not model_params[0]-delta<v.min():
-                plt.xlim([model_params[0]-delta,model_params[0]+delta])
+            if not model_params[0]-delta < v.min():
+                plt.xlim([model_params[0]-delta, model_params[0]+delta])
 
         plt.xlabel('Velocity (km/s)',fontsize=fontsize)
         plt.ylabel('Normalised flux density (Jy s/km)',fontsize=fontsize)
