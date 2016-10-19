@@ -25,6 +25,10 @@ class SaxCatalogue:
             Rest frame frequency of the line in question (e.g. neutral hydrogen) in MHz
         """
         self.filename = filename
+
+        if not os.path.exists(filename):
+            print(filename, "not found")
+            raise IOError
         self.nu_rest = nu_rest
         self.important_parameters = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']
         self.ids = []  # This can only be set by reading in the original catalogue file
