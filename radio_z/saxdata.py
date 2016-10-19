@@ -27,7 +27,7 @@ class SaxCatalogue:
         self.filename = filename
         self.nu_rest = nu_rest
         self.important_parameters = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']
-        self.ids = [] # This can only be set by reading in the original catalogue file
+        self.ids = []  # This can only be set by reading in the original catalogue file
         self.complib = 'bzip2'  # What compression library should be used when storing hdf5 files
 
     def convert_parameters(self, df):
@@ -144,7 +144,7 @@ class SaxCatalogue:
 
         for i in df['id']:
             outfile = os.path.join(filepath, (str)(i)+'.hdf5')
-            params = df[df['id'] == i][self.important_parameters]
+            params = df[df['id'] == i]
             params.to_hdf(outfile, 'parameters', complib=self.complib)
 
 

@@ -222,9 +222,11 @@ class FitData:
             df = pd.DataFrame(data=x, columns=list(self.bounds.keys())+['loglike'])
             df.to_hdf(self.filename, 'chain', complib=self.complib)
 
-            ev, ev_sig = self.read_evidence(chain_name)
+            ev, ev_sig, ev_is = self.read_evidence(chain_name)
             bayes_fact, bayes_sig = self.compute_evidence_ratio(chain_name)
-            df_ev = pd.DataFrame(data=np.array([[ev, ev_sig, bayes_fact]]), columns=['ln(evidence)', 'uncertainty',
+            df_ev = pd.DataFrame(data=np.array([[ev, ev_sig, ev_is, bayes_fact]]), columns=['ln(evidence)',
+                                                                                           'uncertainty',
+                                                                                            'IS ln(evidence)',
                                                                                      'Bayes factor'])
             df_ev.to_hdf(self.filename, 'evidence', complib=self.complib)
 
@@ -268,7 +270,9 @@ class FitData:
         line = lns[0].split(':')[1].split()
         ev = float(line[0])
         ev_sig = float(line[-1])
-        return ev, ev_sig
+        line = lns[1].split(':')[1].split()  # Get the importance sampled evidence
+        ev_is = float(line[0])
+        return ev, ev_sig, ev_is
 
     def compute_evidence_ratio(self, chain_name):
         """
@@ -287,7 +291,7 @@ class FitData:
             Uncertainty in ln(E2/E1)
         """
 
-        E2, E2_sig = self.read_evidence(chain_name)
+        E2, E2_sig, E_is = self.read_evidence(chain_name)
 
         E1 = self.compute_null_evidence()
         return E2-E1, E2_sig
@@ -372,7 +376,8 @@ class ChainAnalyser:
 
     def convert_z(self, v):
         c = 3e5
-        return -(v/(v+c))
+        return -(v/(c+v))
+        #return -v/c
 
     def p_of_z(self, delta_z=0, v0_ind=0, save_to_file=True):
         """
@@ -409,7 +414,7 @@ class ChainAnalyser:
         new_bins = (bins[1:] + bins[:-1])/2
 
         if save_to_file:
-            df = pd.DataFrame(data=np.column_stack(new_bins, pdf), columns=['z', 'p(z)'])
+            df = pd.DataFrame(data=np.column_stack((new_bins, pdf)), columns=['z', 'p(z)'])
             df.to_hdf(self.filename, 'p(z)')
 
         return new_bins, pdf

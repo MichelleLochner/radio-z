@@ -1,0 +1,16 @@
+# This file may be used to create an environment using:
+# $ conda create --name <env> --file <this file>
+# platform: linux-64
+name: py3
+
+dependencies:
+  - python>=3
+  - jupyter>=1.0.0
+  - matplotlib>=1.5.1
+  - numpy>=1.10.4
+  - pandas>=0.18.1
+  - pytables>=3.2.2
+  - scipy>=0.17.0
+
+  - pip:
+    - pymultinest>=1.8
