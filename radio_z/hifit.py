@@ -65,7 +65,12 @@ class FitData:
         bounds : OrderedDict, optional
             Uniform prior bounds on the parameters
         """
+        if not os.path.exists(filename):
+            print(filename, "does not exist")
+            raise IOError
+        
         self.filename = filename
+
         self.complib = 'bzip2'  # What compression library should be used when storing hdf5 files
 
         if read_from_hdf:
