@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 from tables.exceptions import HDF5ExtError  # Needed to catch errors when loading hdf5 files
 
 
-def _fit_object(filename, data_dir='data', output_dir='output', save_to_hdf=True, delete_files=False, n_live_points=500):
+def _fit_object(filename, output_dir='output', save_to_hdf=True, delete_files=False, n_live_points=500):
     """
     Given a key, fits a single spectral line from a catalogue. External function to the FitCatalogue class to get
     around the pickling issues in the multiprocessing library.
@@ -35,7 +35,7 @@ def _fit_object(filename, data_dir='data', output_dir='output', save_to_hdf=True
     """
     id = filename.split(os.sep)[-1].split('.')[0]
     print('Fitting object', id)
-    fd = FitData(filename=os.path.join(data_dir,filename))
+    fd = FitData(filename=filename)
     fd.fit(chain_name=output_dir + '/' + id + '-', save_to_hdf=save_to_hdf, delete_files=delete_files,
            n_live_points=n_live_points)
 
@@ -68,7 +68,7 @@ class FitData:
         if not os.path.exists(filename):
             print(filename, "does not exist")
             raise IOError
-        
+
         self.filename = filename
 
         self.complib = 'bzip2'  # What compression library should be used when storing hdf5 files
@@ -342,14 +342,14 @@ class FitCatalogue:
             files = self.subset
 
         if nprocesses > 1:
-            new_func = partial(_fit_object, data_dir=self.filepath, output_dir=output_dir, save_to_hdf=save_to_hdf, delete_files=delete_files,
+            new_func = partial(_fit_object, output_dir=output_dir, save_to_hdf=save_to_hdf, delete_files=delete_files,
                                n_live_points=n_live_points)
             p = Pool(nprocesses)
             p.map(new_func, files)
 
         else:
             for f in files[:1]:
-                _fit_object(f, data_dir=self.filepath, output_dir=output_dir, save_to_hdf=save_to_hdf, delete_files=delete_files,
+                _fit_object(f, output_dir=output_dir, save_to_hdf=save_to_hdf, delete_files=delete_files,
                             n_live_points=n_live_points)
 
 
