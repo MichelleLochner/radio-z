@@ -180,6 +180,7 @@ class Survey:
             self.name = survey_name
             self.nu_min = 950
             self.nu_max = 1760
+            #self.nu_max = 1420
             self.delta_nu = 0.01
             self.s_rms = 187.e-6
             self.z_min = 0
@@ -339,10 +340,15 @@ class Survey:
                                                         kind='linear',
                                                         bounds_error=False)
         elif band == 2:
-            interp_aont_return = interp1d(frq*1e3,
-                                                        aot_bands[5],
-                                                        kind='linear',
-                                                        bounds_error=False)
+            aot_b2_full = np.nan_to_num(aot_bands[5])
+            interp_aont_return = interp1d(frq * 1e3,
+                                          aot_b2_full,
+                                          kind='linear',
+                                          bounds_error=False)
+            # interp_aont_return = interp1d(frq*1e3,
+            #                                             aot_bands[5],
+            #                                             kind='linear',
+            #                                             bounds_error=False)
 
         if normed_at_1ghz:
             return interp_aont_return(nu) / interp_aont_return(1000.)
@@ -460,7 +466,7 @@ class DataFromCatalogue:
         if noise:
             sigma = survey.get_noise(v_range)
         else:
-            sigma = 0
+            sigma = [0]*len(v_range)
         psi = lp.get_line_profile(v_range, sigma)
 
         return pd.DataFrame(data=np.column_stack([v_range, psi, sigma]), columns=['v', 'psi', 'psi_err'])
