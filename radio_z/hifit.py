@@ -371,8 +371,12 @@ class ChainAnalyser:
         self.filename = filename
         self.log_params = log_params
 
-        self.chain = pd.read_hdf(filename, 'chain').as_matrix()
-        self.evidence = pd.read_hdf(filename, 'evidence')
+        try:
+            self.chain = pd.read_hdf(filename, 'chain').as_matrix()
+            self.evidence = pd.read_hdf(filename, 'evidence')
+        except KeyError:
+            print('Chain not found in file', filename)
+            raise KeyError
 
         if len(self.log_params) > 0:
             self.chain[:, self.log_params] = np.exp(self.chain[:, self.log_params])
@@ -424,7 +428,7 @@ class ChainAnalyser:
 
         return new_bins, pdf
 
-    def plot_p_of_z(self, delta_z=0, v0_ind=0, smooth=False):
+    def plot_p_of_z(self, delta_z=0, v0_ind=0, true_val=0, colour='#0057f6', smooth=False):
         """
         Plots P(z)
         Parameters
@@ -442,13 +446,25 @@ class ChainAnalyser:
             f = interp1d(bins, pdf, kind='cubic')
             newbins = np.linspace(bins.min(), bins.max(), 100)
             newpdf = f(newbins)
-            plt.plot(newbins, newpdf, color='#0057f6', lw=1.5)
+            plt.plot(newbins, newpdf, color=colour, lw=1.5)
         else:
-            plt.plot(bins, pdf, color='k')
+            plt.plot(bins, pdf, color=colour)
+
+        if true_val != 0:
+            plt.plot([true_val, true_val], plt.gca().get_ylim(), lw=1.5, color='k')
 
         plt.xlabel('z')
         plt.ylabel('P(z)')
         plt.tight_layout()
+
+    def get_errors(self, x, max_post):
+        xnew = np.sort(x)
+        x1 = xnew[xnew < max_post]
+        x2 = xnew[xnew >= max_post]
+        sig1 = np.percentile(x1, 34)
+        sig2 = np.percentile(x2, 66)
+
+        return sig1, sig2
 
     def parameter_estimates(self, true_params=[], save_to_file=True):
         """
@@ -477,14 +493,26 @@ class ChainAnalyser:
 
         parameters['Mean'] = np.mean(chain, axis=0)
         parameters['Median'] = np.median(chain, axis=0)
-        parameters['MAP'] = chain[np.argmax(logpost), :]
-        parameters['16p'] = np.percentile(chain, 16, axis=0)
-        parameters['84p'] = np.percentile(chain, 84, axis=0)
+        maps = chain[np.argmax(logpost), :]
+        parameters['MAP'] = maps
+        #parameters['16p'] = np.percentile(chain, 16, axis=0)
+        #parameters['84p'] = np.percentile(chain, 84, axis=0)
+        lower = np.zeros(len(chain[0,:]))
+        upper = np.zeros(len(chain[0,:]))
+
+        for i in range(len(self.param_names)):
+            l, u = self.get_errors(chain[:,i], maps[i])
+            upper[i] = u
+            lower[i] = l
+        parameters['16p'] = lower
+        parameters['84p'] = upper
 
         if len(true_params) != 0:
             true_z = self.convert_z(true_params[0])
             true_params = np.append(true_params, true_z)
             parameters['True'] = true_params
+            if '66232966' in self.filename:
+                print('66232966', parameters['True'])
 
         if save_to_file:
             parameters.to_hdf(self.filename, 'summary')
