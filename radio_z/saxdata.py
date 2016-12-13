@@ -230,6 +230,9 @@ class Survey:
         # Define T_recv piecewise, in each band (bands 1,5 are defined in two pieces)
         trcvb1a = 17. + 3.*(frq-0.35)/(1.05-0.35)
         trcvb1b = 17. + 3.*(frq-0.35)/(1.05-0.35)
+        # trcvb1a = 11. + 3. * (frq - 0.35) / (1.05 - 0.35)
+        # trcvb1b = 11. + 3. * (frq - 0.35) / (1.05 - 0.35)
+
         trcvb2 = 8.2 + 0.7*(frq-0.95)/(1.76-0.95)
         trcvb3 = 10.6 + 1.5*(frq-1.65)/(3.05-1.65)
         trcvb4 = 14.3 + 2.4*(frq-2.8)/(5.18-2.8)
@@ -277,12 +280,15 @@ class Survey:
         (frb2hi, frb2lo, trcvb2),
         ]
         trcv_bands = []
+
+        delt = frq[1] - frq[0] # Catches the edges of the bands, otherwise not interpolated over
+
         for fhi, flo, _trcv in bands:
-            idx = np.where(np.logical_and(frq < fhi, frq >= flo))
+            idx = np.where(np.logical_and(frq < fhi + delt, frq >= flo-delt))
             trcv[idx] = _trcv[idx] # Overall T_recv
 
             # Get per-band T_recv curve
-            trcv_band = np.nan * np.ones(trcv.shape) # Should make A/T -> 0 out of band
+            trcv_band = np.inf * np.ones(trcv.shape) # Should make A/T -> 0 out of band
             trcv_band[idx] = _trcv[idx]
             trcv_bands.append(trcv_band)
         trcv_bands = np.array(trcv_bands) # Array containing T_rcv separately, for each band
@@ -314,7 +320,7 @@ class Survey:
 
             # Plot results
             ff = np.logspace(np.log10(350.), np.log10(20e3), 1000)
-            plt.subplot(111)
+            #plt.subplot(111)
 
             # Combined curve
             plt.plot(ff, interp_aont(ff), 'k-', lw=1.5)
@@ -334,21 +340,23 @@ class Survey:
         if band == 0:
             interp_aont_return = interp_aont
         elif band == 1:
-            aot_b1_full = np.nansum(np.vstack([aot_bands[0], aot_bands[1]]), axis=0)
+            # aot_b1_full = np.nansum(np.vstack([aot_bands[0], aot_bands[1]]), axis=0)
+            aot_b1_full = np.sum(np.vstack([aot_bands[0], aot_bands[1]]), axis=0)
             interp_aont_return = interp1d(frq*1e3,
                                                         aot_b1_full,
                                                         kind='linear',
                                                         bounds_error=False)
         elif band == 2:
-            aot_b2_full = np.nan_to_num(aot_bands[5])
-            interp_aont_return = interp1d(frq * 1e3,
-                                          aot_b2_full,
-                                          kind='linear',
-                                          bounds_error=False)
-            # interp_aont_return = interp1d(frq*1e3,
-            #                                             aot_bands[5],
-            #                                             kind='linear',
-            #                                             bounds_error=False)
+            # aot_b2_full = np.nan_to_num(aot_bands[5])
+            # interp_aont_return = interp1d(frq * 1e3,
+            #                               aot_b2_full,
+            #                               kind='linear',
+            #                               bounds_error=False)
+            interp_aont_return = interp1d(frq*1e3,
+                                                        aot_bands[5],
+                                                        kind='linear',
+                                                        bounds_error=False)
+
 
         if normed_at_1ghz:
             return interp_aont_return(nu) / interp_aont_return(1000.)
