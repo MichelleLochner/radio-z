@@ -378,9 +378,6 @@ class ChainAnalyser:
             print('Chain not found in file', filename)
             raise KeyError
 
-        if len(self.log_params) > 0:
-            self.chain[:, self.log_params] = np.exp(self.chain[:, self.log_params])
-
         self.param_names = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0', 'z']
 
     def convert_z(self, v):
@@ -461,8 +458,15 @@ class ChainAnalyser:
         xnew = np.sort(x)
         x1 = xnew[xnew < max_post]
         x2 = xnew[xnew >= max_post]
-        sig1 = np.percentile(x1, 34)
-        sig2 = np.percentile(x2, 66)
+
+        if len(x1) == 0:
+            sig1 = max_post
+        else:
+            sig1 = np.percentile(x1, 34)
+        if len(x2) == 0:
+            sig2 = max_post
+        else:
+            sig2 = np.percentile(x2, 66)
 
         return sig1, sig2
 
@@ -495,8 +499,7 @@ class ChainAnalyser:
         parameters['Median'] = np.median(chain, axis=0)
         maps = chain[np.argmax(logpost), :]
         parameters['MAP'] = maps
-        #parameters['16p'] = np.percentile(chain, 16, axis=0)
-        #parameters['84p'] = np.percentile(chain, 84, axis=0)
+
         lower = np.zeros(len(chain[0,:]))
         upper = np.zeros(len(chain[0,:]))
 
@@ -507,12 +510,12 @@ class ChainAnalyser:
         parameters['16p'] = lower
         parameters['84p'] = upper
 
+        parameters.iloc[self.log_params, :] = np.exp(parameters.iloc[self.log_params, :])
+
         if len(true_params) != 0:
             true_z = self.convert_z(true_params[0])
             true_params = np.append(true_params, true_z)
             parameters['True'] = true_params
-            if '66232966' in self.filename:
-                print('66232966', parameters['True'])
 
         if save_to_file:
             parameters.to_hdf(self.filename, 'summary')
