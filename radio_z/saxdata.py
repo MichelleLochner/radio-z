@@ -228,10 +228,10 @@ class Survey:
         stad = 15. # Dish diameter [m]
 
         # Define T_recv piecewise, in each band (bands 1,5 are defined in two pieces)
-        trcvb1a = 17. + 3.*(frq-0.35)/(1.05-0.35)
-        trcvb1b = 17. + 3.*(frq-0.35)/(1.05-0.35)
-        # trcvb1a = 11. + 3. * (frq - 0.35) / (1.05 - 0.35)
-        # trcvb1b = 11. + 3. * (frq - 0.35) / (1.05 - 0.35)
+        # trcvb1a = 17. + 3.*(frq-0.35)/(1.05-0.35)
+        # trcvb1b = 17. + 3.*(frq-0.35)/(1.05-0.35)
+        trcvb1a = 11. + 3. * (frq - 0.35) / (1.05 - 0.35)
+        trcvb1b = 11. + 3. * (frq - 0.35) / (1.05 - 0.35)
 
         trcvb2 = 8.2 + 0.7*(frq-0.95)/(1.76-0.95)
         trcvb3 = 10.6 + 1.5*(frq-1.65)/(3.05-1.65)
