@@ -32,7 +32,7 @@ class SaxCatalogue:
         self.nu_rest = nu_rest
         self.important_parameters = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']
         self.ids = []  # This can only be set by reading in the original catalogue file
-        self.complib = 'bzip2'  # What compression library should be used when storing hdf5 files
+        # self.complib = 'bzip2'  # What compression library should be used when storing hdf5 files
 
     def convert_parameters(self, df):
         """
@@ -51,6 +51,29 @@ class SaxCatalogue:
         df['w_obs_peak'] = df['hiwidthpeak']
         df['psi_obs_max'] = df['hiintflux']*df['hilumpeak']
         df['psi_obs_0'] = df['hiintflux']*df['hilumcenter']
+
+    def compute_snr(self, df):
+        if 'v0' not in df.columns:
+            self.convert_parameters(df)
+        surv1 = Survey('ska1_band1')
+        surv2 = Survey('ska1_band2')
+
+        noise1 = surv1.get_noise(np.array(df.v0))
+        noise2 = surv2.get_noise(np.array(df.v0))
+        snr1 = np.array(df['psi_obs_0']) / noise1
+        snr2 = np.array(df['psi_obs_0']) / noise2
+
+        delta_v = surv1.nu2v(1+surv1.delta_nu) - surv1.nu2v(1)
+
+        snr_santos1 = df['hiintflux']/np.sqrt(delta_v*df['w_obs_peak']) / noise1
+        snr_santos2 = df['hiintflux'] / np.sqrt(delta_v * df['w_obs_peak']) / noise2
+
+
+
+        df['snr_band1_std'] = snr1
+        df['snr_band2_std'] = snr2
+        df['snr_band1_santos'] = snr_santos1
+        df['snr_band2_santos'] = snr_santos2
 
     def get_data(self):
         """
@@ -74,6 +97,7 @@ class SaxCatalogue:
             df = pd.read_csv(self.filename)
 
         self.convert_parameters(df)
+        self.compute_snr(df)
 
         self.ids = (list)(df['id'])
 
@@ -149,7 +173,7 @@ class SaxCatalogue:
         for i in df['id']:
             outfile = os.path.join(filepath, (str)(i)+'.hdf5')
             params = df[df['id'] == i]
-            params.to_hdf(outfile, 'parameters', complib=self.complib)
+            params.to_hdf(outfile, 'parameters')
 
 
 class Survey:
@@ -165,6 +189,8 @@ class Survey:
         survey_name : str
             The name of the survey (e.g. 'ska1_band1')
         """
+
+        self.nantennas = 190 # Needed for noise calculation
 
         if survey_name == 'ska1_band1':
             self.name = survey_name
@@ -230,8 +256,10 @@ class Survey:
         # Define T_recv piecewise, in each band (bands 1,5 are defined in two pieces)
         # trcvb1a = 17. + 3.*(frq-0.35)/(1.05-0.35)
         # trcvb1b = 17. + 3.*(frq-0.35)/(1.05-0.35)
-        trcvb1a = 11. + 3. * (frq - 0.35) / (1.05 - 0.35)
-        trcvb1b = 11. + 3. * (frq - 0.35) / (1.05 - 0.35)
+
+        #FUDGED TO MATCH LATEST DOCUMENT
+        trcvb1a = 6. + 11.75 * (frq - 0.35) / (1.05 - 0.35)
+        trcvb1b = 6. + 11.75 * (frq - 0.35) / (1.05 - 0.35)
 
         trcvb2 = 8.2 + 0.7*(frq-0.95)/(1.76-0.95)
         trcvb3 = 10.6 + 1.5*(frq-1.65)/(3.05-1.65)
@@ -281,10 +309,9 @@ class Survey:
         ]
         trcv_bands = []
 
-        delt = frq[1] - frq[0] # Catches the edges of the bands, otherwise not interpolated over
 
         for fhi, flo, _trcv in bands:
-            idx = np.where(np.logical_and(frq < fhi + delt, frq >= flo-delt))
+            idx = np.where(np.logical_and(frq < fhi, frq >= flo))
             trcv[idx] = _trcv[idx] # Overall T_recv
 
             # Get per-band T_recv curve
@@ -419,10 +446,16 @@ class Survey:
         """
 
         nu = self.v2nu(v, nu_rest = nu_rest)
-        aot = self.aeff_on_tsys(nu, normed_at_1ghz = True, band=self.band)
+        #aot = self.aeff_on_tsys(nu, normed_at_1ghz = True, band=self.band)
+        #return self.s_rms * aot
+        # return [self.s_rms]*len(v)
 
-        return self.s_rms * aot
-        #return [self.s_rms]*len(v)
+        AoT = self.aeff_on_tsys(nu, normed_at_1ghz=False, band=self.band, makeplot=False)
+        tp = 1.76 * (1 / (nu / 1000)) ** 2 # Assumed time per pointing
+        # Equation from Yahya et al (2015)
+        return 260e-6 * (25000/20) / (AoT * self.nantennas) * (0.01 / self.delta_nu) ** (0.5) * (1 / tp) ** 0.5
+
+
 
     def inband(self, df):
         """
