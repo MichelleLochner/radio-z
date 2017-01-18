@@ -11,6 +11,7 @@ import glob
 from multiprocessing import Pool
 from functools import partial
 from scipy.interpolate import interp1d
+from scipy.special import erfcinv
 import matplotlib.pyplot as plt
 from tables.exceptions import HDF5ExtError  # Needed to catch errors when loading hdf5 files
 
@@ -113,16 +114,26 @@ class FitData:
             #     ('psi_obs_max', [0, 0.1]),
             #     ('psi_obs_0', [0, 0.1])
             # ])
+            vmax = self.v.max()
+            if vmax > 0:
+                vmax = 0 # Redshift can't be less than zero
             self.bounds = OrderedDict([
-                    ('v0', [self.v.min(), self.v.max()]),
-                    ('w_obs_20', [0, 1500]),
-                    ('w_obs_50', [0, 1500]),
-                    ('w_obs_peak', [0, 1500]),
+                    ('v0', [self.v.min(), vmax]),
+                    # ('w_obs_20', [0, 1500]),
+                    # ('w_obs_50', [0, 1500]),
+                    # ('w_obs_peak', [0, 1500]),
+                    ('w_obs_20', [-1, 7.5]),
+                    ('w_obs_50', [-1, 7.5]),
+                    ('w_obs_peak', [-1, 7.5]),
                     ('psi_obs_max', [-11, -2]),
                     ('psi_obs_0', [-11, -2])
                 ])
         else:
             self.bounds = bounds
+
+        # self.log_params = [4, 5]
+        self.log_params = np.arange(1, 6)
+
         self.ndim = len(self.bounds)
         self.likecalls = 0
 
@@ -130,7 +141,7 @@ class FitData:
         """
         Additional prior to ensure constraints are met in the sampling.
         """
-        return (params[1] > params[2]) and (params[2] > params[3]) and (params[4] > params[5])
+        return (params[1] > params[2]) and (params[2] > params[3]) and (params[4] > params[5]) and (params[3]>0)
 
     def loglike(self, cube, ndim, nparams):
         """
@@ -152,11 +163,11 @@ class FitData:
         """
         self.likecalls += 1
         params = []
-        log_params = [4, 5]
+
 
         # This is the only obvious way to convert a ctypes pointer to a numpy array
         for i in range(nparams):
-            if i in log_params:
+            if i in self.log_params:
                 p = np.exp(cube[i])
             else:
                 p = cube[i]
@@ -197,9 +208,9 @@ class FitData:
             cube[i] = cube[i]*(upper-lower)+lower
         return cube
 
-    # def loglike_flat(self, cube, ndim, nparams):
 
-    def fit(self, chain_name='hi_run', save_to_hdf=True, delete_files=False, n_live_points=500):
+
+    def fit(self, chain_name='hi_run', save_to_hdf=True, delete_files=False, n_live_points=500, multimodal=True):
         """
         Actually run multinest to fit model to the data
 
@@ -215,11 +226,14 @@ class FitData:
             file (provided at initialisation)
         delete_files : boolean, optional
             Whether or not to delete the base chain files (will not exectue if not saved to hdf5 first)
+        multimodal : boolean, optional
+            Whether or not to run multinest in multimodal mode. If true, can occasionally fix modes too early so it's
+            worth changing for difficult problems.
         """
         t1 = time.time()
         pymultinest.run(self.loglike, self.prior, self.ndim, importance_nested_sampling = True, init_MPI = False,
                         resume = False, verbose = False, sampling_efficiency = 'model', evidence_tolerance = 0.5,
-                        n_live_points = n_live_points, outputfiles_basename = chain_name, multimodal = True)
+                        n_live_points = n_live_points, outputfiles_basename = chain_name, multimodal = multimodal)
 
         if save_to_hdf:
             # These are the files we can convert
