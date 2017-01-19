@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from tables.exceptions import HDF5ExtError  # Needed to catch errors when loading hdf5 files
 
 
-def _fit_object(filename, output_dir='output', save_to_hdf=True, delete_files=False, n_live_points=500):
+def _fit_object(filename, output_dir='output', save_to_hdf=True, delete_files=False, n_live_points=500, log_file=''):
     """
     Given a key, fits a single spectral line from a catalogue. External function to the FitCatalogue class to get
     around the pickling issues in the multiprocessing library.
@@ -37,8 +37,17 @@ def _fit_object(filename, output_dir='output', save_to_hdf=True, delete_files=Fa
     id = filename.split(os.sep)[-1].split('.')[0]
     print('Fitting object', id)
     fd = FitData(filename=filename)
+    t1 = time.time()
     fd.fit(chain_name=output_dir + '/' + id + '-', save_to_hdf=save_to_hdf, delete_files=delete_files,
            n_live_points=n_live_points)
+    # time.sleep(np.random.randn()*2+5)
+    tm = time.time() - t1
+
+    if len(log_file)!= 0:
+        prms = pd.read_hdf(filename, 'parameters')
+        fl = open(log_file, 'a')
+        fl.write('%s\t%2.2f\t%2.2f\t%3.2f\n' %(id, prms.snr_band1_santos, prms.snr_band2_santos, tm/60.))
+        fl.close()
 
 
 class FitData:
@@ -320,7 +329,7 @@ class FitCatalogue:
     """
     Fit an entire catalogue of data
     """
-    def __init__(self, filepath='./', subset=[]):
+    def __init__(self, filepath='./', log_name='log', subset=[]):
         """
         Class to fit a catalogue of data, in parallel if requested. Assumes data are stored as individual HDF5 files
         in a single directory.
@@ -331,6 +340,13 @@ class FitCatalogue:
         """
         self.filepath = filepath
         self.subset = subset
+        if len(log_name) != 0:
+            self.log_file = os.path.join(filepath, log_name+'.txt')
+            fl = open(self.log_file, 'w')
+            fl.write('%s\tSNR1\tSNR2\tTime\n' %('#ID'.ljust(11)))
+            fl.close()
+        else:
+            self.log_file = ''
 
     def fit_all(self, nprocesses=1, output_dir='output', save_to_hdf=True, delete_files=False, n_live_points=500):
         """
@@ -355,16 +371,17 @@ class FitCatalogue:
         else:
             files = self.subset
 
+
         if nprocesses > 1:
             new_func = partial(_fit_object, output_dir=output_dir, save_to_hdf=save_to_hdf, delete_files=delete_files,
-                               n_live_points=n_live_points)
+                               n_live_points=n_live_points, log_file=self.log_file)
             p = Pool(nprocesses)
             p.map(new_func, files)
 
         else:
-            for f in files[:1]:
+            for f in files:
                 _fit_object(f, output_dir=output_dir, save_to_hdf=save_to_hdf, delete_files=delete_files,
-                            n_live_points=n_live_points)
+                            n_live_points=n_live_points, log_file=self.log_file)
 
 
 class ChainAnalyser:
