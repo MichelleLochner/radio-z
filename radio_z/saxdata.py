@@ -44,7 +44,8 @@ class SaxCatalogue:
         df : pandas.Dataframe
             A catalogue of SAX objects as a dataframe
         """
-        df['id'] = 'ID' + df['id'].astype(int).astype(str) # For HDF5 naming conventions
+        if 'ID' not in df.iloc[0]['id']:
+            df['id'] = 'ID' + df['id'].astype(int).astype(str) # For HDF5 naming conventions
         df['v0'] = - 3e5*df['zapparent']/(1 + df['zapparent'])
         df['w_obs_20'] = df['hiwidth20']
         df['w_obs_50'] = df['hiwidth50']
