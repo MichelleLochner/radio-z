@@ -153,7 +153,8 @@ class SaxCatalogue:
             if len(ids) == 0:
                 print('Warning: no ID found.')
             else:
-                ids = 'ID' + ids.astype(int).astype(str)
+                if 'ID' not in df.iloc[0]['id']:
+                    ids = 'ID' + ids.astype(int).astype(str)
             ids = (list)(ids)
 
             self.ids = ids
