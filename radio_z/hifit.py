@@ -329,7 +329,7 @@ class FitCatalogue:
     """
     Fit an entire catalogue of data
     """
-    def __init__(self, filepath='./', log_name='log', subset=[]):
+    def __init__(self, filepath='./', log_name='log', append_to_log=False, subset=[]):
         """
         Class to fit a catalogue of data, in parallel if requested. Assumes data are stored as individual HDF5 files
         in a single directory.
@@ -342,9 +342,10 @@ class FitCatalogue:
         self.subset = subset
         if len(log_name) != 0:
             self.log_file = os.path.join(filepath, log_name+'.txt')
-            fl = open(self.log_file, 'w')
-            fl.write('%s\tSNR1\tSNR2\tTime\n' %('#ID'.ljust(11)))
-            fl.close()
+            if not append_to_log:
+                fl = open(self.log_file, 'w')
+                fl.write('%s\tSNR1\tSNR2\tTime\n' %('#ID'.ljust(11)))
+                fl.close()
         else:
             self.log_file = ''
 
