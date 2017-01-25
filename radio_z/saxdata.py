@@ -49,7 +49,7 @@ class SaxCatalogue:
         try:
             df['id'].astype(int)
             df['id'] = 'ID' + df['id'].astype(int).astype(str) # For HDF5 naming conventions
-        except AttributeError:
+        except ValueError:
             pass # Already in correct format
         df['v0'] = - 3e5*df['zapparent']/(1 + df['zapparent'])
         df['w_obs_20'] = df['hiwidth20']
@@ -187,7 +187,7 @@ class SaxCatalogue:
             for i in df['id']:
                 self.write_params(i, df, filepath)
         else:
-            new_func = partial(self.write_params(df=df, filepath=filepath))
+            new_func = partial(self.write_params, df=df, filepath=filepath)
             p = Pool(nprocesses)
             p.map(new_func, df['id'])
 
@@ -529,7 +529,15 @@ class DataFromCatalogue:
 
         return pd.DataFrame(data=np.column_stack([v_range, psi, sigma]), columns=['v', 'psi', 'psi_err'])
 
-    def create_from_cat(self, survey, df=[], filepath='./'):
+    def create_data_from_file(self, fl, cols, survey):
+        hstore = pd.HDFStore(fl)
+        params = hstore['parameters'][cols]
+        hstore.close()
+        params = params.as_matrix()[0].tolist()
+        data = self.create_data(params, survey, noise=True)
+        data.to_hdf(fl, 'data')
+
+    def create_from_cat(self, survey, df=[], filepath='./', nprocesses=1):
         """
         Generates all data from a set of objects in a catalogue (supplied either as a dataframe or as existing hdf5
         files) and stores the data in either existing or new hdf5 files (one per object).
@@ -562,13 +570,16 @@ class DataFromCatalogue:
                 print('Cannot find object files matching pattern <ID*.hdf5>. Please supply DataFrame or correct path.')
 
             else:
-                for f in files:
-                    hstore = pd.HDFStore(f)
-                    params = hstore['parameters'][cols]
-                    hstore.close()
-                    params = params.as_matrix()[0].tolist()
-                    data = self.create_data(params, survey, noise=True)
-                    data.to_hdf(f, 'data')
+                if nprocesses == 1:
+                    for f in files:
+                        self.create_data_from_file(f, cols, survey)
+                else:
+                    new_func = partial(self.create_data_from_file, cols=cols, survey=survey)
+                    p = Pool(nprocesses)
+                    p.map(new_func, files)
+
+
+
 
     def plot_profile(self, df, plot_model=False, model_params=[], plot_fit=False, fit_params=[], zoom=True,
                      fontsize=14, data_colour='#c2c2d6', model_colour='k', fit_colour='r', rotation=0):
