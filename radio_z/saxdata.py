@@ -6,6 +6,8 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 from radio_z import hiprofile
 import os, glob
+from functools import partial
+from multiprocessing import Pool
 
 
 class SaxCatalogue:
@@ -44,8 +46,11 @@ class SaxCatalogue:
         df : pandas.Dataframe
             A catalogue of SAX objects as a dataframe
         """
-        if 'ID' not in df.iloc[0]['id']:
+        try:
+            df['id'].astype(int)
             df['id'] = 'ID' + df['id'].astype(int).astype(str) # For HDF5 naming conventions
+        except AttributeError:
+            pass # Already in correct format
         df['v0'] = - 3e5*df['zapparent']/(1 + df['zapparent'])
         df['w_obs_20'] = df['hiwidth20']
         df['w_obs_50'] = df['hiwidth50']
@@ -160,7 +165,13 @@ class SaxCatalogue:
             self.ids = ids
             return ids
 
-    def write_to_disk(self, filepath='./'):
+
+    def write_params(self, id, df, filepath):
+        outfile = os.path.join(filepath, (str)(id) + '.hdf5')
+        params = df[df['id'] == id]
+        params.to_hdf(outfile, 'parameters')
+
+    def write_to_disk(self, filepath='./', nprocesses=1):
         """
         Reads the catalogue file, extracts the 6 parameters we care about and then stores them as individual hdf5 files
         for each object.
@@ -172,10 +183,14 @@ class SaxCatalogue:
         """
         df = self.get_data()
 
-        for i in df['id']:
-            outfile = os.path.join(filepath, (str)(i)+'.hdf5')
-            params = df[df['id'] == i]
-            params.to_hdf(outfile, 'parameters')
+        if nprocesses == 1:
+            for i in df['id']:
+                self.write_params(i, df, filepath)
+        else:
+            new_func = partial(self.write_params(df=df, filepath=filepath))
+            p = Pool(nprocesses)
+            p.map(new_func, df['id'])
+
 
 
 class Survey:
