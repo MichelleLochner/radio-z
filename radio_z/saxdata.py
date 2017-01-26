@@ -295,7 +295,8 @@ class Survey:
 
         # Band boundaries (GHz)
         frb1alo = 0.35
-        frb1ahi = 0.58
+        # frb1ahi = 0.58
+        frb1ahi = 1.05
         frb1blo = 0.58
         frb1bhi = 1.05
         frb2lo = 0.95
@@ -318,7 +319,7 @@ class Survey:
         # two bands overlap)
         bands = [
         (frb1ahi, frb1alo, trcvb1a),
-        (frb1bhi, frb1blo, trcvb1b),
+        # (frb1bhi, frb1blo, trcvb1b),
         (frb5hi, frb5lo, trcvb5b),
         (frb4hi, frb4lo, trcvb4),
         (frb3hi, frb3lo, trcvb3),
@@ -326,10 +327,14 @@ class Survey:
         ]
         trcv_bands = []
 
+        df = frq[1] - frq[0]
+        #df = 0
 
         for fhi, flo, _trcv in bands:
-            idx = np.where(np.logical_and(frq < fhi, frq >= flo))
+
+            idx = np.where(np.logical_and(frq <= fhi+df, frq >= flo-df))
             trcv[idx] = _trcv[idx] # Overall T_recv
+
 
             # Get per-band T_recv curve
             trcv_band = np.inf * np.ones(trcv.shape) # Should make A/T -> 0 out of band
@@ -385,7 +390,8 @@ class Survey:
             interp_aont_return = interp_aont
         elif band == 1:
             # aot_b1_full = np.nansum(np.vstack([aot_bands[0], aot_bands[1]]), axis=0)
-            aot_b1_full = np.sum(np.vstack([aot_bands[0], aot_bands[1]]), axis=0)
+            #aot_b1_full = np.sum(np.vstack([aot_bands[0], aot_bands[1]]), axis=0)
+            aot_b1_full = aot_bands[0]
             interp_aont_return = interp1d(frq*1e3,
                                                         aot_b1_full,
                                                         kind='linear',
@@ -397,7 +403,7 @@ class Survey:
             #                               kind='linear',
             #                               bounds_error=False)
             interp_aont_return = interp1d(frq*1e3,
-                                                        aot_bands[5],
+                                                        aot_bands[4],
                                                         kind='linear',
                                                         bounds_error=False)
 
