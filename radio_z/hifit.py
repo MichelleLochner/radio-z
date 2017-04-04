@@ -446,7 +446,9 @@ class ChainAnalyser:
             nbins = 25
         else:
             nbins = (int)((z.max() - z.min())/delta_z)
-        pdf, bins = np.histogram(z, bins=nbins, density=True)
+        pdf, bins = np.histogram(z, bins=nbins)
+        # BUG in numpy, these are not actually normalised
+        pdf = pdf/np.sum(pdf)
 
         # We want to return the mid points of the bins
         new_bins = (bins[1:] + bins[:-1])/2
@@ -457,7 +459,7 @@ class ChainAnalyser:
 
         return new_bins, pdf
 
-    def plot_p_of_z(self, delta_z=0, v0_ind=0, true_val=0, colour='#0057f6', smooth=False):
+    def plot_p_of_z(self, delta_z=0, v0_ind=0, true_val=0, colour='#0057f6', smooth=False, rot=0):
         """
         Plots P(z)
         Parameters
@@ -477,14 +479,18 @@ class ChainAnalyser:
             newpdf = f(newbins)
             plt.plot(newbins, newpdf, color=colour, lw=1.5)
         else:
-            plt.plot(bins, pdf, color=colour)
+            plt.plot(bins, pdf, color=colour, lw=1.5)
+
+        plt.xticks(rotation=rot)
+        plt.xlabel('z')
+        plt.ylabel('P(z)')
+
 
         if true_val != 0:
             plt.plot([true_val, true_val], plt.gca().get_ylim(), lw=1.5, color='k')
-
-        plt.xlabel('z')
-        plt.ylabel('P(z)')
         plt.tight_layout()
+
+
 
     def get_errors(self, x, max_post):
         xnew = np.sort(x)
