@@ -492,7 +492,25 @@ class ChainAnalyser:
 
 
 
-    def get_errors(self, x, max_post):
+    def get_errors(self, x, max_post, perc):
+        """
+        Returns the error estimates from a chain
+
+        Parameters
+        ----------
+        x : numpy array
+            Column of a chain
+        max_post : float
+            Maximum posterior point in x
+        perc : float
+            Which percentile to compute (68 for 1 sigma, 95 for 2 sigma, 99 for 3 sigma)
+
+        Returns
+        -------
+        sig1, sig2
+            The values of x corresponding the input percentile
+
+        """
         xnew = np.sort(x)
         x1 = xnew[xnew < max_post]
         x2 = xnew[xnew >= max_post]
@@ -500,11 +518,11 @@ class ChainAnalyser:
         if len(x1) == 0:
             sig1 = max_post
         else:
-            sig1 = np.percentile(x1, 34)
+            sig1 = np.percentile(x1, 100-perc)
         if len(x2) == 0:
             sig2 = max_post
         else:
-            sig2 = np.percentile(x2, 66)
+            sig2 = np.percentile(x2, perc)
 
         return sig1, sig2
 
@@ -531,22 +549,32 @@ class ChainAnalyser:
         logpost = self.chain[:, -1]
         chain = np.column_stack((self.chain[:, :-1], z))
 
-        parameters = pd.DataFrame(columns = ['Mean', 'Median', 'MAP', '16p', '84p'], index=self.param_names)
+        parameters = pd.DataFrame(columns = ['Mean', 'Median', 'MAP', 'lower_1sigma', 'upper_1sigma','lower_2sigma',
+                                             'upper_2sigma','lower_3sigma', 'upper_3sigma'], index=self.param_names)
 
         parameters['Mean'] = np.mean(chain, axis=0)
         parameters['Median'] = np.median(chain, axis=0)
         maps = chain[np.argmax(logpost), :]
         parameters['MAP'] = maps
 
-        lower = np.zeros(len(chain[0,:]))
-        upper = np.zeros(len(chain[0,:]))
+        lower1 = np.zeros(len(chain[0,:]))
+        upper1 = np.zeros(len(chain[0,:]))
+        lower2 = np.zeros(len(chain[0, :]))
+        upper2 = np.zeros(len(chain[0, :]))
+        lower3 = np.zeros(len(chain[0, :]))
+        upper3 = np.zeros(len(chain[0, :]))
 
         for i in range(len(self.param_names)):
-            l, u = self.get_errors(chain[:,i], maps[i])
-            upper[i] = u
-            lower[i] = l
-        parameters['16p'] = lower
-        parameters['84p'] = upper
+            lower1[i], upper1[i] = self.get_errors(chain[:,i], maps[i], 68)
+            lower2[i], upper2[i] = self.get_errors(chain[:, i], maps[i], 95)
+            lower3[i], upper3[i] = self.get_errors(chain[:, i], maps[i], 99.7)
+
+        parameters['lower_1sigma'] = lower1
+        parameters['upper_1sigma'] = upper1
+        parameters['lower_2sigma'] = lower2
+        parameters['upper_2sigma'] = upper2
+        parameters['lower_3sigma'] = lower3
+        parameters['upper_3sigma'] = upper3
 
         parameters.iloc[self.log_params, :] = np.exp(parameters.iloc[self.log_params, :])
 
