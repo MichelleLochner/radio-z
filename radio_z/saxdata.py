@@ -384,7 +384,7 @@ class Survey:
             plt.xscale('log')
             plt.xlim((300., 30e3))
             plt.tight_layout()
-            plt.show()
+            plt.savefig('aeff_on_tsys.png', bbox_inches='tight', dpi=160)
 
         if band == 0:
             interp_aont_return = interp_aont
