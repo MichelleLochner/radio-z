@@ -102,6 +102,8 @@ for band in band_list:
   plt.hist(snr_dat_10['z_true'], linestyle='-.', histtype='step', color='k', label='$\mathrm{SNR}_{\\rm vel} > \,$'+('%d' % (2*snrcut)))
   plt.hist(z_map, histtype='step', color='c', label='$\mathrm{ln}(B) > \,$'+('%.1f' % bcut)+'$\, \mathrm{estimated}$')
   plt.hist(z_true, linestyle='--', histtype='step', color='m', label='$\mathrm{ln}(B) > \,$'+('%.1f' % bcut)+'$\, \mathrm{true}$')
+  if band == '2':
+    plt.ylim([4.e1, 8.e3])
   plt.xlabel('$\mathrm{Redshift} \, \, z$')
   plt.ylabel('$N_{\\rm gal}$')
   plt.legend(frameon=False, loc='upper right')
