@@ -44,14 +44,14 @@ def makePlot(line_id, root_dir, plot_dir ='./', drawwidth=300):
   psi_good = theoryline.get_line_profile(v_good)
   plt.close('all')
   plt.figure(1, figsize=(4.5, 3.75))
-  plt.plot(v_plot*1.e-3, psi_plot*1.e3, c='k', label='$\mathrm{SKA-like}$')
+  plt.plot(v_plot*1.e-3, psi_plot*1.e3, c='k', label='$\mathrm{SKA-like}$', alpha=0.6)
   plt.plot(v_good*1.e-3, psi_good*1.e3, c='c', label='$\mathrm{Model}$', lw=2)
   #plt.text(-200, 0.9*psi_plot.max()*1.e3, ('$\mathrm{SNR} = %.2f$' % line.snr))
   plt.xlabel('$\\times10^{3} \, v \, [\mathrm{kms}^{-1}]$')
   plt.ylabel('$\Psi \, [\mathrm{mJy}]$')
   plt.xlim([v_plot[0]*1.e-3, v_plot[-1]*1.e-3])
   plt.legend(frameon=False, fontsize='small')
-  plt.savefig(plot_dir+'line_{0}.png'.format(line_id), bbox_inches='tight', dpi=160)
+  plt.savefig(plot_dir+'line_{0}.png'.format(line_id), bbox_inches='tight', dpi=300)
 
   psi_good_large = theoryline.get_line_profile(v)
   plt.close('all')
@@ -63,7 +63,7 @@ def makePlot(line_id, root_dir, plot_dir ='./', drawwidth=300):
   plt.ylabel('$\Psi \, [\mathrm{mJy}]$')
   plt.xlim([v[0]*1.e-3, v[-1]*1.e-3])
   plt.legend(frameon=False, fontsize='small')
-  plt.savefig(plot_dir+'line_{0}_zoomout.png'.format(line_id), bbox_inches='tight', dpi=160)
+  plt.savefig(plot_dir+'line_{0}_zoomout.png'.format(line_id), bbox_inches='tight', dpi=300)
 
   plt.figure(3, figsize=(4.5, 3.75))
   z_true = linestore['summary']['True']['z']
@@ -73,7 +73,7 @@ def makePlot(line_id, root_dir, plot_dir ='./', drawwidth=300):
   plt.axvline(0, linestyle='--', color=cpal[3])
   plt.ylabel('$\mathrm{Probability}\, P(z - z_{\\rm true})$')
   plt.xlabel('$10^{5}\\times\mathrm{Redshift \, Error} \, \Delta z$')
-  plt.savefig(plot_dir+'line_{0}_zpdf.png'.format(line_id), bbox_inches='tight', dpi=160)
+  plt.savefig(plot_dir+'line_{0}_zpdf.png'.format(line_id), bbox_inches='tight', dpi=300)
 
 if __name__=='__main__':
 

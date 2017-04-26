@@ -39,8 +39,8 @@ for i,lineid in enumerate(lineid_list):
   v0 = linestore['chain']['v0']
   z_pdf = -v0/(v0+3e5)
   if z_pdf.var() < 0.005:
-    axlist[i].axvline(0, linestyle='--', color='c', zorder=1)
-    axlist[i].hist((z_pdf-z_true)*1.e3, color='m', zorder=10, histtype='step', normed=True, range=(-4, 4), bins=50, label='$\ln(B) = $'+('%.2f' % lineev['Bayes factor']))#, color=cpal[i])
+    axlist[i].axvline(0, linestyle='--', color='m', zorder=1)
+    axlist[i].hist((z_pdf-z_true)*1.e3, color='k', zorder=10, histtype='step', normed=True, range=(-4, 4), bins=50, label='$\ln(B) = $'+('%.2f' % lineev['Bayes factor']))#, color=cpal[i])
     #axlist[i].legend(loc='upper left', frameon=False, fontsize='x-small')
     axlist[i].text(0.5,3,'$\ln(B) = $'+('%.2f' % lineev['Bayes factor']), fontsize='small')
 
