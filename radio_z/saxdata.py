@@ -507,6 +507,7 @@ class DataFromCatalogue:
         """
         Tools to generate mock data.
         """
+        self.profile_params = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']
 
     def create_data(self, params, survey, noise=True):
         """
@@ -574,12 +575,12 @@ class DataFromCatalogue:
         filepath : str, optional
             Where to put the output hdf5 files
         """
-        cols = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']  # The parameters we need
+
 
         if len(df) != 0:
             ids = df.id
             for i in ids:
-                params = df[df.id == i][cols]
+                params = df[df.id == i][self.profile_params]
                 params = params.as_matrix()[0].tolist()
 
                 data = self.create_data(params, survey, noise=True)
@@ -595,9 +596,9 @@ class DataFromCatalogue:
             else:
                 if nprocesses == 1:
                     for f in files:
-                        self.create_data_from_file(f, cols, survey)
+                        self.create_data_from_file(f, self.profile_params, survey)
                 else:
-                    new_func = partial(self.create_data_from_file, cols=cols, survey=survey)
+                    new_func = partial(self.create_data_from_file, cols=self.profile_params, survey=survey)
                     p = Pool(nprocesses)
                     p.map(new_func, files)
 
