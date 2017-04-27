@@ -11,7 +11,6 @@ import glob
 from multiprocessing import Pool
 from functools import partial
 from scipy.interpolate import interp1d
-from scipy.special import erfcinv
 import matplotlib.pyplot as plt
 from tables.exceptions import HDF5ExtError  # Needed to catch errors when loading hdf5 files
 
@@ -107,30 +106,11 @@ class FitData:
             self.sigma = sigma
 
         if len(bounds) == 0:
-            # self.bounds = OrderedDict([
-            #         ('v0', [v.min(),v.max()]),
-            #         ('w_obs_20', [7, 20]),
-            #         ('w_obs_50', [7, 20]),
-            #         ('w_obs_peak', [7,14]),
-            #         ('psi_obs_max', [-11, -4]),
-            #         ('psi_obs_0', [-11, -4])
-            #         ])
-            # self.bounds = OrderedDict([
-            #     ('v0', [v.min(), v.max()]),
-            #     ('w_obs_20', [0, 1500]),
-            #     ('w_obs_50', [0, 1500]),
-            #     ('w_obs_peak', [0, 1500]),
-            #     ('psi_obs_max', [0, 0.1]),
-            #     ('psi_obs_0', [0, 0.1])
-            # ])
             vmax = self.v.max()
             if vmax > 0:
                 vmax = 0 # Redshift can't be less than zero
             self.bounds = OrderedDict([
                     ('v0', [self.v.min(), vmax]),
-                    # ('w_obs_20', [0, 1500]),
-                    # ('w_obs_50', [0, 1500]),
-                    # ('w_obs_peak', [0, 1500]),
                     ('w_obs_20', [-1, 7.5]),
                     ('w_obs_50', [-1, 7.5]),
                     ('w_obs_peak', [-1, 7.5]),
@@ -140,7 +120,6 @@ class FitData:
         else:
             self.bounds = bounds
 
-        # self.log_params = [4, 5]
         self.log_params = np.arange(1, 6)
 
         self.ndim = len(self.bounds)
@@ -187,8 +166,6 @@ class FitData:
 
         lp = hiprofile.LineProfile(*params)
         psi_fit = lp.get_line_profile(self.v, noise=0)
-        # Multiply by dN/dz prior
-        #return np.sum(np.log(1/(np.sqrt(2*np.pi*self.sigma**2))))-0.5*np.sum(((psi_fit-self.psi)/self.sigma)**2)
         return -0.5*np.sum(((psi_fit-self.psi)/self.sigma)**2)
 
     def prior(self, cube, ndim, nparams):
@@ -275,7 +252,6 @@ class FitData:
         float
             Bayesian evidence
         """
-        #return np.sum(np.log(1/(np.sqrt(2*np.pi*self.sigma**2))))-0.5*np.sum((self.psi/self.sigma)**2)
         return -0.5*np.sum((self.psi/self.sigma)**2)
 
     def read_evidence(self, chain_name):
@@ -415,7 +391,6 @@ class ChainAnalyser:
     def convert_z(self, v):
         c = 3e5
         return -(v/(c+v))
-        #return -v/c
 
     def p_of_z(self, delta_z=0, v0_ind=0, save_to_file=True):
         """
@@ -447,8 +422,7 @@ class ChainAnalyser:
         else:
             nbins = (int)((z.max() - z.min())/delta_z)
         pdf, bins = np.histogram(z, bins=nbins)
-        # BUG in numpy, these are not actually normalised
-        pdf = pdf/np.sum(pdf)
+        pdf = pdf/np.sum(pdf) # Normalise
 
         # We want to return the mid points of the bins
         new_bins = (bins[1:] + bins[:-1])/2
