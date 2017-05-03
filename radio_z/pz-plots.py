@@ -33,7 +33,7 @@ for band in band_list:
   plt.close('all')
   #raw_dat = Table.read('./output_snr_1_band_{0}/redshift_estimates.dat'.format(band), format='ascii', delimiter=',', header_start=0)
   #raw_dat = Table.read('./output_snr_1_band_{0}/updated_redshift_estimates_band{0}.dat'.format(band), format='ascii', delimiter=',', header_start=0)
-  raw_dat = Table.read('./output_snr_1_band_{0}/updated_redshift_estimates_band{0}_sigmas.dat'.format(band), format='ascii', delimiter=',', header_start=0)
+  raw_dat = Table.read('./data/output_snr_1_band_{0}/updated_redshift_estimates_band{0}_sigmas.dat'.format(band), format='ascii', delimiter=',', header_start=0)
 
   if band=='1':
     Ngal = Ngal_inband1
@@ -128,13 +128,13 @@ for band in band_list:
   plt.savefig(fname+'_zerr_hist.png', bbox_inches='tight', dpi=300)
 
   plt.figure(6, figsize=(5, 3.75))
-  plt.scatter(np.exp(raw_dat['snr_band{0}_santos'.format(band)]), raw_dat['B'], c=raw_dat['z_true'], cmap='plasma_r', linewidths=0, alpha=0.6)
+  plt.scatter((raw_dat['snr_band{0}_santos'.format(band)]), raw_dat['B'], c=raw_dat['z_true'], cmap='plasma_r', linewidths=0, alpha=0.6)
   plt.axhline(np.exp(0), linestyle='--')
   plt.axvline(5, linestyle='--')
   plt.yscale('log')
   plt.xscale('log')
   plt.ylim([1.e-4, 1.e7])
-  plt.xlim([2.e0, 1.e6])
+  plt.xlim([2.e0, 1.e4])
   cbar = plt.colorbar()
   cbar.set_label('$z_{\\rm true}$')
   plt.xlabel('$\mathrm{SNR_{vel}}$')
@@ -143,7 +143,7 @@ for band in band_list:
   plt.savefig(fname+'_snr_B.png', bbox_inches='tight', dpi=300)
 
   plt.figure(7, figsize=(5, 3.75))
-  plt.scatter(np.exp(raw_dat['snr_band{0}_std'.format(band)]), raw_dat['B'], c=raw_dat['z_true'], cmap='plasma_r', linewidths=0, alpha=0.6)
+  plt.scatter((raw_dat['snr_band{0}_std'.format(band)]), raw_dat['B'], c=raw_dat['z_true'], cmap='plasma_r', linewidths=0, alpha=0.6)
   plt.axhline(np.exp(0), linestyle='--')
   plt.axvline(5, linestyle='--')
   plt.yscale('log')
@@ -158,7 +158,7 @@ for band in band_list:
   plt.savefig(fname+'_snr_std_B.png', bbox_inches='tight', dpi=300)
 
   plt.figure(8, figsize=(5, 3.75))
-  plt.scatter(np.exp(raw_dat['snr_band{0}_santos'.format(band)]), np.exp(raw_dat['snr_band{0}_std'.format(band)]), c=raw_dat['z_true'], cmap='plasma_r', linewidths=0, alpha=0.6)
+  plt.scatter((raw_dat['snr_band{0}_santos'.format(band)]), (raw_dat['snr_band{0}_std'.format(band)]), c=raw_dat['z_true'], cmap='plasma_r', linewidths=0, alpha=0.6)
   plt.axhline(5, linestyle='--')
   plt.axvline(5, linestyle='--')
   plt.yscale('log')
