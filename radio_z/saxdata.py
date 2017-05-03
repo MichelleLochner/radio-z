@@ -34,7 +34,6 @@ class SaxCatalogue:
         self.nu_rest = nu_rest
         self.important_parameters = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']
         self.ids = []  # This can only be set by reading in the original catalogue file
-        # self.complib = 'bzip2'  # What compression library should be used when storing hdf5 files
 
     def convert_parameters(self, df):
         """
@@ -59,6 +58,14 @@ class SaxCatalogue:
         df['psi_obs_0'] = df['hiintflux']*df['hilumcenter']
 
     def compute_snr(self, df):
+        """
+        Function to compute the SNR for a catalogue
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The catalogue dataframe
+        """
         if 'v0' not in df.columns:
             self.convert_parameters(df)
         surv1 = Survey('ska1_band1')
@@ -74,9 +81,7 @@ class SaxCatalogue:
         snr_santos1 = df['hiintflux']/np.sqrt(delta_v*df['w_obs_peak']) / noise1
         snr_santos2 = df['hiintflux'] / np.sqrt(delta_v * df['w_obs_peak']) / noise2
 
-
-
-        df['snr_band1_std'] = snr1
+        df['snr_band1_std'] = snr1 # Experiment with different definition of SNR
         df['snr_band2_std'] = snr2
         df['snr_band1_santos'] = snr_santos1
         df['snr_band2_santos'] = snr_santos2
@@ -167,6 +172,17 @@ class SaxCatalogue:
 
 
     def write_params(self, id, df, filepath):
+        """
+        Function to write the original catalogue parameters of an object to its HDF5 file
+        Parameters
+        ----------
+        id : string
+            Identifier of galaxy
+        df : pandas.DataFrame
+            Catalogue dataframe
+        filepath : string
+            HDF5 file for the object
+        """
         outfile = os.path.join(filepath, (str)(id) + '.hdf5')
         params = df[df['id'] == id]
         params.to_hdf(outfile, 'parameters')
@@ -389,24 +405,16 @@ class Survey:
         if band == 0:
             interp_aont_return = interp_aont
         elif band == 1:
-            # aot_b1_full = np.nansum(np.vstack([aot_bands[0], aot_bands[1]]), axis=0)
-            #aot_b1_full = np.sum(np.vstack([aot_bands[0], aot_bands[1]]), axis=0)
             aot_b1_full = aot_bands[0]
             interp_aont_return = interp1d(frq*1e3,
                                                         aot_b1_full,
                                                         kind='linear',
                                                         bounds_error=False)
         elif band == 2:
-            # aot_b2_full = np.nan_to_num(aot_bands[5])
-            # interp_aont_return = interp1d(frq * 1e3,
-            #                               aot_b2_full,
-            #                               kind='linear',
-            #                               bounds_error=False)
             interp_aont_return = interp1d(frq*1e3,
                                                         aot_bands[4],
                                                         kind='linear',
                                                         bounds_error=False)
-
 
         if normed_at_1ghz:
             return interp_aont_return(nu) / interp_aont_return(1000.)
@@ -469,9 +477,6 @@ class Survey:
         """
 
         nu = self.v2nu(v, nu_rest = nu_rest)
-        #aot = self.aeff_on_tsys(nu, normed_at_1ghz = True, band=self.band)
-        #return self.s_rms * aot
-        # return [self.s_rms]*len(v)
 
         AoT = self.aeff_on_tsys(nu, normed_at_1ghz=False, band=self.band, makeplot=False)
         tp = 1.76 * (1 / (nu / 1000)) ** 2 # Assumed time per pointing
@@ -502,6 +507,7 @@ class DataFromCatalogue:
         """
         Tools to generate mock data.
         """
+        self.profile_params = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']
 
     def create_data(self, params, survey, noise=True):
         """
@@ -536,6 +542,18 @@ class DataFromCatalogue:
         return pd.DataFrame(data=np.column_stack([v_range, psi, sigma]), columns=['v', 'psi', 'psi_err'])
 
     def create_data_from_file(self, fl, cols, survey):
+        """
+        Does what it says on the box. Creates the simulated data from a set of parameters in an HDF5 file.
+
+        Parameters
+        ----------
+        fl : string
+            HDF5 file where parameters are contained and data is to be saved
+        cols : list
+            Names of the parameters used to generate a line profile
+        survey : saxdata.Survey
+            Survey object initialised to either band 1 or band 2
+        """
         hstore = pd.HDFStore(fl)
         params = hstore['parameters'][cols]
         hstore.close()
@@ -557,12 +575,12 @@ class DataFromCatalogue:
         filepath : str, optional
             Where to put the output hdf5 files
         """
-        cols = ['v0', 'w_obs_20', 'w_obs_50', 'w_obs_peak', 'psi_obs_max', 'psi_obs_0']  # The parameters we need
+
 
         if len(df) != 0:
             ids = df.id
             for i in ids:
-                params = df[df.id == i][cols]
+                params = df[df.id == i][self.profile_params]
                 params = params.as_matrix()[0].tolist()
 
                 data = self.create_data(params, survey, noise=True)
@@ -578,9 +596,9 @@ class DataFromCatalogue:
             else:
                 if nprocesses == 1:
                     for f in files:
-                        self.create_data_from_file(f, cols, survey)
+                        self.create_data_from_file(f, self.profile_params, survey)
                 else:
-                    new_func = partial(self.create_data_from_file, cols=cols, survey=survey)
+                    new_func = partial(self.create_data_from_file, cols=self.profile_params, survey=survey)
                     p = Pool(nprocesses)
                     p.map(new_func, files)
 
