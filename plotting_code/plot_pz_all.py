@@ -1,6 +1,12 @@
+'''
+Plot posterior P(z) for all lines in a folder
+
+run script from radio-z/plotting_scripts
+data comes from root_dir
+plots go into plot_dir
+'''
 import numpy as np
 import pandas as pd
-from astropy.table import Table
 from matplotlib import pyplot as plt
 from matplotlib import rc
 import glob
@@ -14,8 +20,8 @@ cpal = ['#185aa9','#008c48','#ee2e2f','#f47d23','#662c91','#a21d21','#b43894','#
 
 plt.close('all') # tidy up any unshown plots
 
-plot_dir = './plots/'
-root_dir = './data/examples_band2/'
+plot_dir = '../plots/'
+root_dir = '../data/examples_band2/'
 
 lineid_list = glob.glob(root_dir+'*')
 #lineid_list = lineid_list[-5:-1]
@@ -38,10 +44,8 @@ for i,lineid in enumerate(lineid_list):
                label='$\ln(B) = $'+('%.2f' % lineev['Bayes factor'])+'\n$\mathrm{'+lineid.split('/')[-1]+'}$')#, color=cpal)
   ax.legend(loc='upper left', frameon=False, fontsize='x-small')
 
-  #plt.axvline(0, linestyle='--', color=cpal[3])
   plt.xlim([-4, 4])
   plt.ylabel('$\mathrm{Probability}\, P(z - z_{\\rm true})$')
   plt.xlabel('$10^{3}\\times\mathrm{Redshift \, Error} \, \Delta z$')
-  #plt.ylabel('$\mathrm{Probability}\, P(z - z_{\\rm true})$')
-  #plt.xlabel('$\mathrm{Redshift \, Error} \, \Delta z$')
   plt.savefig(plot_dir+'line_{0}_zpdf.png'.format(lineid.split('/')[-1]), bbox_inches='tight', dpi=300)
+  linestore.close()
