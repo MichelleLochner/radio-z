@@ -392,7 +392,7 @@ class ChainAnalyser:
         c = 3e5
         return -(v/(c+v))
 
-    def p_of_z(self, delta_z=0, v0_ind=0, save_to_file=True):
+    def p_of_z(self, delta_z=0, z_min=0, z_max=0, nbins=50, v0_ind=0, save_to_file=True):
         """
         Function to return the marginalised probability density function of redshift for a given object.
 
@@ -418,10 +418,14 @@ class ChainAnalyser:
         z = self.convert_z(self.chain[:, v0_ind])
 
         if delta_z == 0:
-            nbins = 25
+            nbins = nbins
         else:
-            nbins = (int)((z.max() - z.min())/delta_z)
-        pdf, bins = np.histogram(z, bins=nbins)
+            if z_max==0:
+                nbins = (int)((z.max() - z.min())/delta_z)
+                bins = np.linspace(z.min(), z.max(), nbins)
+            else:
+                bins = np.linspace(z_min, z_max, nbins)
+        pdf, bins = np.histogram(z, bins=bins)
         pdf = pdf/np.sum(pdf) # Normalise
 
         # We want to return the mid points of the bins
