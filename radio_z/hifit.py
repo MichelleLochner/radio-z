@@ -417,14 +417,14 @@ class ChainAnalyser:
 
         z = self.convert_z(self.chain[:, v0_ind])
 
-        if delta_z == 0:
-            nbins = nbins
-        else:
-            if z_max==0:
-                nbins = (int)((z.max() - z.min())/delta_z)
-                bins = np.linspace(z.min(), z.max(), nbins)
+        if z_max==0:
+            if delta_z == 0:
+                nbins = 25
             else:
-                bins = np.linspace(z_min, z_max, nbins)
+                nbins = (int)((z.max() - z.min())/delta_z)
+            bins = np.linspace(z.min(), z.max(), nbins)
+        else:
+            bins = np.linspace(z_min, z_max, nbins)
         pdf, bins = np.histogram(z, bins=bins)
         pdf = pdf/np.sum(pdf) # Normalise
 
